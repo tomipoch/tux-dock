@@ -103,9 +103,10 @@ export class AppIcon {
             margin-top: 2px;
         `);
 
-        // Añadir al contenedor
+        // Añadir al contenedor principal
         this._container.add_child(this._button);
         this._container.add_child(this._indicators);
+
 
         // Configurar drag & drop
         this._draggable = DND.makeDraggable(this._button);

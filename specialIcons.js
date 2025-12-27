@@ -2,6 +2,7 @@ import St from 'gi://St';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 
 /**
  * Icono especial para el lanzador de aplicaciones (App Grid)
@@ -123,6 +124,9 @@ export class TrashIcon {
         this._updateTrashIcon();
         this._setupTrashMonitor();
 
+        // Configurar como drop target para archivos
+        this._setupDropTarget();
+
         // Conectar eventos
         this._button.connect('clicked', () => {
             // Abrir papelera en el gestor de archivos
@@ -152,6 +156,79 @@ export class TrashIcon {
 
         return this._button;
     }
+
+    _setupDropTarget() {
+        // Configurar el botón como drop target para archivos
+        this._button._delegate = {
+            acceptDrop: (source, actor, x, y, time) => {
+                // Aceptar archivos y moverlos a la papelera
+                if (source._fileUri) {
+                    return this._moveToTrash(source._fileUri);
+                }
+                return false;
+            },
+            
+            handleDragOver: (source, actor, x, y, time) => {
+                if (source._fileUri) {
+                    // Resaltar la papelera cuando se arrastra un archivo sobre ella
+                    this._button.add_style_pseudo_class('drop-target');
+                    this._button.set_style(this._button.get_style() + `
+                        background-color: rgba(231, 76, 60, 0.3);
+                        transform: scale(1.15);
+                    `);
+                    return DND.DragMotionResult.MOVE_DROP;
+                }
+                return DND.DragMotionResult.CONTINUE;
+            }
+        };
+        
+        // Remover el estilo cuando el drag sale
+        this._button.connect('leave-event', () => {
+            this._button.remove_style_pseudo_class('drop-target');
+            this._button.set_style(`
+                padding: 6px;
+                margin: 0 2px;
+                border-radius: 12px;
+                transition-duration: 200ms;
+            `);
+        });
+    }
+
+    _moveToTrash(fileUri) {
+        try {
+            const file = Gio.File.new_for_uri(fileUri);
+            
+            // Mover archivo a la papelera
+            file.trash(null);
+            
+            console.log(`[TuxDock] Archivo movido a la papelera: ${fileUri}`);
+            
+            // Actualizar icono inmediatamente
+            this._updateTrashIcon();
+            
+            // Animación de pulso para feedback visual
+            this._button.ease({
+                scale_x: 1.2,
+                scale_y: 1.2,
+                duration: 100,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onComplete: () => {
+                    this._button.ease({
+                        scale_x: 1.0,
+                        scale_y: 1.0,
+                        duration: 100,
+                        mode: Clutter.AnimationMode.EASE_IN_QUAD
+                    });
+                }
+            });
+            
+            return true;
+        } catch (e) {
+            console.error('[TuxDock] Error moviendo archivo a la papelera:', e);
+            return false;
+        }
+    }
+
 
     _setupTrashMonitor() {
         // Monitorear cambios en la papelera

@@ -2,15 +2,21 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import St from 'gi://St';
 import { log, logError } from './utils.js';
 
 /**
- * Maneja el arrastrar y soltar de iconos en el dock
+ * Maneja el arrastrar y soltar de iconos en el dock estilo macOS
  */
 export class DragDropHandler {
     constructor(appManager) {
         this._appManager = appManager;
         this._dragMonitor = null;
+        this._isOutsideDock = false;
+        this._removalIndicator = null;
+        this._insertionIndicator = null;
+        this._dragThreshold = 50; // píxeles desde el borde del dock
     }
 
     makeDraggable(appIcon) {
@@ -40,6 +46,8 @@ export class DragDropHandler {
             
             handleDragOver: (source, actor, x, y, time) => {
                 if (source.app) {
+                    // Mostrar indicador de inserción
+                    this._showInsertionIndicator(actor, x, y);
                     return DND.DragMotionResult.MOVE_DROP;
                 }
                 return DND.DragMotionResult.CONTINUE;
@@ -55,12 +63,26 @@ export class DragDropHandler {
         
         draggable.connect('drag-begin', () => {
             actor.opacity = 100;
+            this._setupDragMonitor(actor, appIcon);
+            
+            // Notificar al sistema de magnificación
+            if (this._appManager._dockContainer._magnification) {
+                this._appManager._dockContainer._magnification.setDragging(true);
+            }
+            
             log('[TuxDock] Drag comenzado');
         });
         
         draggable.connect('drag-end', () => {
             actor.opacity = 255;
             this._onDragEnd(appIcon);
+            this._cleanupDragMonitor();
+            
+            // Restaurar magnificación
+            if (this._appManager._dockContainer._magnification) {
+                this._appManager._dockContainer._magnification.setDragging(false);
+            }
+            
             log('[TuxDock] Drag terminado');
         });
 
@@ -68,11 +90,172 @@ export class DragDropHandler {
         actor._draggable = draggable;
     }
 
+    _setupDragMonitor(actor, appIcon) {
+        this._isOutsideDock = false;
+        
+        this._dragMonitor = {
+            dragMotion: (dragEvent) => {
+                const [x, y] = global.get_pointer();
+                const dockBounds = this._getDockBounds();
+                
+                // Verificar si está fuera del dock
+                const isOutside = !this._isInsideDock(x, y, dockBounds);
+                
+                if (isOutside !== this._isOutsideDock) {
+                    this._isOutsideDock = isOutside;
+                    this._showRemovalIndicator(isOutside);
+                }
+                
+                return DND.DragMotionResult.CONTINUE;
+            }
+        };
+        
+        DND.addDragMonitor(this._dragMonitor);
+    }
+
+    _cleanupDragMonitor() {
+        if (this._dragMonitor) {
+            DND.removeDragMonitor(this._dragMonitor);
+            this._dragMonitor = null;
+        }
+        
+        this._hideRemovalIndicator();
+        this._hideInsertionIndicator();
+        this._isOutsideDock = false;
+    }
+
+    _getDockBounds() {
+        const container = this._appManager._dockContainer.getContainer();
+        if (!container) return null;
+        
+        const [x, y] = container.get_transformed_position();
+        const width = container.width;
+        const height = container.height;
+        
+        return {
+            x: x - this._dragThreshold,
+            y: y - this._dragThreshold,
+            width: width + (this._dragThreshold * 2),
+            height: height + (this._dragThreshold * 2)
+        };
+    }
+
+    _isInsideDock(x, y, bounds) {
+        if (!bounds) return true;
+        
+        return x >= bounds.x && 
+               x <= bounds.x + bounds.width &&
+               y >= bounds.y && 
+               y <= bounds.y + bounds.height;
+    }
+
+    _showRemovalIndicator(show) {
+        if (show) {
+            if (!this._removalIndicator) {
+                this._removalIndicator = new St.Label({
+                    text: '✕ Soltar para quitar',
+                    style_class: 'tux-dock-removal-indicator',
+                });
+                
+                this._removalIndicator.set_style(`
+                    background-color: rgba(231, 76, 60, 0.9);
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    font-size: 12pt;
+                    font-weight: bold;
+                `);
+                
+                Main.layoutManager.addChrome(this._removalIndicator);
+            }
+            
+            // Posicionar en el centro superior de la pantalla
+            const monitor = Main.layoutManager.primaryMonitor;
+            const [mouseX, mouseY] = global.get_pointer();
+            
+            this._removalIndicator.set_position(
+                mouseX - this._removalIndicator.width / 2,
+                mouseY - 60
+            );
+            
+            this._removalIndicator.opacity = 0;
+            this._removalIndicator.show();
+            
+            this._removalIndicator.ease({
+                opacity: 255,
+                duration: 150,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD
+            });
+        } else {
+            this._hideRemovalIndicator();
+        }
+    }
+
+    _hideRemovalIndicator() {
+        if (this._removalIndicator) {
+            this._removalIndicator.ease({
+                opacity: 0,
+                duration: 150,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onComplete: () => {
+                    if (this._removalIndicator) {
+                        Main.layoutManager.removeChrome(this._removalIndicator);
+                        this._removalIndicator.destroy();
+                        this._removalIndicator = null;
+                    }
+                }
+            });
+        }
+    }
+
+    _showInsertionIndicator(targetActor, x, y) {
+        // TODO: Implementar indicador de inserción visual
+        // Mostrar una línea vertical entre iconos donde se insertará
+    }
+
+    _hideInsertionIndicator() {
+        if (this._insertionIndicator) {
+            this._insertionIndicator.destroy();
+            this._insertionIndicator = null;
+        }
+    }
+
     _onDragEnd(appIcon) {
+        // Si se soltó fuera del dock, remover de favoritos
+        if (this._isOutsideDock) {
+            const favorites = AppFavorites.getAppFavorites();
+            const appId = appIcon.app.get_id();
+            
+            if (favorites.isFavorite(appId)) {
+                log(`[TuxDock] Removiendo app de favoritos: ${appId}`);
+                favorites.removeFavorite(appId);
+                
+                // Mostrar animación de "poof"
+                this._showPoofAnimation(appIcon);
+            }
+        }
+        
         // Forzar refresh para reorganizar
         setTimeout(() => {
             this._appManager.refresh();
         }, 100);
+    }
+
+    _showPoofAnimation(appIcon) {
+        const actor = appIcon.getActor();
+        if (!actor) return;
+        
+        // Animación simple de desvanecimiento con escala
+        actor.ease({
+            opacity: 0,
+            scale_x: 0.3,
+            scale_y: 0.3,
+            duration: 200,
+            mode: Clutter.AnimationMode.EASE_IN_BACK,
+            onComplete: () => {
+                // El refresh del appManager se encargará de removerlo
+            }
+        });
     }
 
     _handleReorder(sourceApp, targetApp) {
@@ -243,5 +426,9 @@ export class DragDropHandler {
             logError(`Error abriendo archivo con ${app.get_name()}`, e);
             return false;
         }
+    }
+
+    destroy() {
+        this._cleanupDragMonitor();
     }
 }
