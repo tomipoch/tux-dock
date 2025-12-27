@@ -30,6 +30,8 @@ export class AppIcon {
         this._animations = new DockAnimations();
         this._wasRunning = false;
         this._draggable = null;
+        this._tooltip = null;
+        this._tooltipTimeoutId = null;
     }
 
     build() {
@@ -103,6 +105,9 @@ export class AppIcon {
             margin-top: 2px;
         `);
 
+        // Crear tooltip para mostrar nombre de la app
+        this._createTooltip();
+        
         // Añadir al contenedor principal
         this._container.add_child(this._button);
         this._container.add_child(this._indicators);
@@ -249,8 +254,16 @@ export class AppIcon {
             return Clutter.EVENT_PROPAGATE;
         });
 
-        // Hover effect (desactivado porque la magnificación lo maneja)
+        // Hover effect y tooltip
         this._button.connect('notify::hover', (btn) => {
+            // Mostrar/ocultar tooltip
+            if (btn.hover) {
+                this._scheduleShowTooltip();
+            } else {
+                this._hideTooltip();
+            }
+            
+            // Hover visual effect
             // La magnificación ya maneja el efecto visual
             // Solo cambiar el fondo sutilmente
             if (btn.hover) {
@@ -517,6 +530,83 @@ export class AppIcon {
         return true;
     }
 
+    _createTooltip() {
+        // Crear label para el tooltip
+        this._tooltip = new St.Label({
+            text: this.app.get_name(),
+            style_class: 'tux-dock-tooltip',
+        });
+        
+        this._tooltip.set_style(`
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 10pt;
+        `);
+        
+        this._tooltip.opacity = 0;
+        this._tooltip.hide();
+        
+        Main.layoutManager.addChrome(this._tooltip);
+    }
+
+    _scheduleShowTooltip() {
+        // Cancelar timeout previo
+        if (this._tooltipTimeoutId) {
+            clearTimeout(this._tooltipTimeoutId);
+        }
+        
+        // Mostrar tooltip después de 500ms
+        this._tooltipTimeoutId = setTimeout(() => {
+            this._showTooltip();
+            this._tooltipTimeoutId = null;
+        }, 500);
+    }
+
+    _showTooltip() {
+        if (!this._tooltip || !this._button) return;
+        
+        // Calcular posición encima del icono
+        const [x, y] = this._button.get_transformed_position();
+        const buttonWidth = this._button.width;
+        const buttonHeight = this._button.height;
+        
+        // Posicionar tooltip centrado encima del botón
+        this._tooltip.set_position(
+            Math.floor(x + buttonWidth / 2 - this._tooltip.width / 2),
+            Math.floor(y - this._tooltip.height - 8)
+        );
+        
+        this._tooltip.show();
+        this._tooltip.ease({
+            opacity: 255,
+            duration: 150,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD
+        });
+    }
+
+    _hideTooltip() {
+        // Cancelar timeout pendiente
+        if (this._tooltipTimeoutId) {
+            clearTimeout(this._tooltipTimeoutId);
+            this._tooltipTimeoutId = null;
+        }
+        
+        if (!this._tooltip) return;
+        
+        this._tooltip.ease({
+            opacity: 0,
+            duration: 100,
+            mode: Clutter.AnimationMode.EASE_IN_QUAD,
+            onComplete: () => {
+                if (this._tooltip) {
+                    this._tooltip.hide();
+                }
+            }
+        });
+    }
+
     destroy() {
         // Cancelar preview pendiente
         this._cancelPreview();
@@ -539,6 +629,18 @@ export class AppIcon {
         if (this._menu) {
             this._menu.destroy();
             this._menu = null;
+        }
+        
+        // Limpiar tooltip
+        if (this._tooltipTimeoutId) {
+            clearTimeout(this._tooltipTimeoutId);
+            this._tooltipTimeoutId = null;
+        }
+        
+        if (this._tooltip) {
+            Main.layoutManager.removeChrome(this._tooltip);
+            this._tooltip.destroy();
+            this._tooltip = null;
         }
         
         if (this._container) {

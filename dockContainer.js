@@ -51,10 +51,11 @@ export class DockContainer {
         const opacity = this._settings.getDockOpacity();
         const margin = this._settings.getDockMargin();
         
+        // Padding simétrico y estático - sin deformación
         this._container.set_style(`
             background-color: rgba(40, 40, 40, ${opacity});
             border-radius: 18px;
-            padding: 10px 14px;
+            padding: 12px 16px;
             margin-bottom: ${margin}px;
         `);
     }
