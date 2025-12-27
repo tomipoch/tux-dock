@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.tux-dock" path="/org/gnome/shell/extensions/tux-dock/">
+    <key name="icon-size" type="i">
+      <default>48</default>
+      <summary>Icon size</summary>
+      <description>Size of the dock icons in pixels</description>
+      <range min="32" max="96"/>
+    </key>
+    
+    <key name="position" type="s">
+      <default>"BOTTOM"</default>
+      <summary>Dock position</summary>
+      <description>Position of the dock on the screen</description>
+      <choices>
+        <choice value="BOTTOM"/>
+        <choice value="LEFT"/>
+        <choice value="RIGHT"/>
+      </choices>
+    </key>
+    
+    <key name="autohide" type="b">
+      <default>false</default>
+      <summary>Auto-hide</summary>
+      <description>Hide the dock automatically when not in use</description>
+    </key>
+    
+    <key name="show-running-indicator" type="b">
+      <default>true</default>
+      <summary>Show running indicator</summary>
+      <description>Show dots under running applications</description>
+    </key>
+    
+    <key name="show-window-count" type="b">
+      <default>true</default>
+      <summary>Show window count</summary>
+      <description>Show number of open windows</description>
+    </key>
+    
+    <key name="magnification-enabled" type="b">
+      <default>true</default>
+      <summary>Magnification enabled</summary>
+      <description>Enable icon magnification on hover</description>
+    </key>
+    
+    <key name="magnification-scale" type="d">
+      <default>2.0</default>
+      <summary>Magnification scale</summary>
+      <description>Scale factor for icon magnification</description>
+      <range min="1.0" max="3.0"/>
+    </key>
+    
+    <key name="dock-opacity" type="d">
+      <default>0.9</default>
+      <summary>Dock opacity</summary>
+      <description>Opacity of the dock background (0.0-1.0)</description>
+      <range min="0.0" max="1.0"/>
+    </key>
+    
+    <key name="intellihide" type="b">
+      <default>false</default>
+      <summary>Intelligent hide</summary>
+      <description>Hide dock when windows overlap it</description>
+    </key>
+    
+    <key name="push-windows" type="b">
+      <default>false</default>
+      <summary>Push windows</summary>
+      <description>Push windows away from dock area instead of overlapping</description>
+    </key>
+    
+    <key name="minimize-to-dock" type="b">
+      <default>true</default>
+      <summary>Minimize to dock</summary>
+      <description>Minimize windows to their dock icon</description>
+    </key>
+    
+    <key name="show-trash" type="b">
+      <default>true</default>
+      <summary>Show trash icon</summary>
+      <description>Show trash icon in dock</description>
+    </key>
+    
+    <key name="show-app-launcher" type="b">
+      <default>true</default>
+      <summary>Show app launcher</summary>
+      <description>Show applications launcher icon</description>
+    </key>
+    
+    <key name="enable-bounce" type="b">
+      <default>true</default>
+      <summary>Enable bounce animation</summary>
+      <description>Bounce icons when applications need attention</description>
+    </key>
+    
+    <key name="click-action" type="s">
+      <default>"focus-or-launch"</default>
+      <summary>Click action</summary>
+      <description>Action when clicking an icon</description>
+      <choices>
+        <choice value="focus-or-launch"/>
+        <choice value="minimize-or-focus"/>
+        <choice value="previews"/>
+      </choices>
+    </key>
+    
+    <key name="scroll-action" type="s">
+      <default>"cycle-windows"</default>
+      <summary>Scroll action</summary>
+      <description>Action when scrolling on an icon</description>
+      <choices>
+        <choice value="cycle-windows"/>
+        <choice value="nothing"/>
+      </choices>
+    </key>
+    
+    <key name="middle-click-action" type="s">
+      <default>"new-window"</default>
+      <summary>Middle click action</summary>
+      <description>Action when middle-clicking an icon</description>
+      <choices>
+        <choice value="new-window"/>
+        <choice value="minimize"/>
+        <choice value="quit"/>
+      </choices>
+    </key>
+    
+    <key name="dock-margin" type="i">
+      <default>8</default>
+      <summary>Dock margin</summary>
+      <description>Margin from screen edge in pixels</description>
+      <range min="0" max="50"/>
+    </key>
+    
+    <key name="animation-duration" type="i">
+      <default>200</default>
+      <summary>Animation duration</summary>
+      <description>Duration of animations in milliseconds</description>
+      <range min="0" max="1000"/>
+    </key>
+    
+    <key name="custom-order" type="as">
+      <default>[]</default>
+      <summary>Custom order</summary>
+      <description>Custom order of application icons</description>
+    </key>
+    
+    <key name="pinned-folders" type="as">
+      <default>[]</default>
+      <summary>Pinned folders</summary>
+      <description>List of pinned folder paths</description>
+    </key>
+    
+    <key name="minimize-animation" type="s">
+      <default>"scale"</default>
+      <summary>Minimize animation</summary>
+      <description>Animation effect when minimizing windows</description>
+      <choices>
+        <choice value="scale"/>
+        <choice value="genie"/>
+        <choice value="none"/>
+      </choices>
+    </key>
+  </schema>
+</schemalist>
