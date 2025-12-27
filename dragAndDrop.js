@@ -1,163 +1,181 @@
-import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
-import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
-import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import St from 'gi://St';
-import { log, logError } from './utils.js';
+import Clutter from "gi://Clutter";
+import Gio from "gi://Gio";
+import GLib from "gi://GLib";
+import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
+import * as AppFavorites from "resource:///org/gnome/shell/ui/appFavorites.js";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import St from "gi://St";
+import { log, logError } from "./utils.js";
 
 /**
  * Maneja el arrastrar y soltar de iconos en el dock estilo macOS
  */
 export class DragDropHandler {
-    constructor(appManager) {
-        this._appManager = appManager;
-        this._dragMonitor = null;
-        this._isOutsideDock = false;
-        this._removalIndicator = null;
-        this._insertionIndicator = null;
-        this._dragThreshold = 50; // píxeles desde el borde del dock
-    }
+  constructor(appManager) {
+    this._appManager = appManager;
+    this._dragMonitor = null;
+    this._isOutsideDock = false;
+    this._removalIndicator = null;
+    this._insertionIndicator = null;
+    this._dragThreshold = 50; // píxeles desde el borde del dock
+  }
 
-    makeDraggable(appIcon) {
-        const actor = appIcon.getActor();
-        if (!actor) return;
+  makeDraggable(appIcon) {
+    const actor = appIcon.getActor();
+    if (!actor) return;
 
-        // Crear delegate con información de la app
-        actor._delegate = {
-            app: appIcon.app,
-            
-            getDragActor: () => {
-                return appIcon.app.create_icon_texture(48);
-            },
-            
-            getDragActorSource: () => {
-                return actor;
-            },
-            
-            acceptDrop: (source, actor, x, y, time) => {
-                // Permitir reordenamiento
-                if (source.app && source !== actor._delegate) {
-                    log('[TuxDock] Reordenando iconos');
-                    return this._handleReorder(source.app, appIcon.app);
-                }
-                return false;
-            },
-            
-            handleDragOver: (source, actor, x, y, time) => {
-                if (source.app) {
-                    // Mostrar indicador de inserción
-                    this._showInsertionIndicator(actor, x, y);
-                    return DND.DragMotionResult.MOVE_DROP;
-                }
-                return DND.DragMotionResult.CONTINUE;
-            }
-        };
+    // Si ya había delegate, lo mezclamos
+    const originalDelegate = actor._delegate || {};
 
-        // Hacer draggable con opciones específicas
-        const draggable = DND.makeDraggable(actor, {
-            restoreOnSuccess: false,
-            manualMode: false,
-            dragActorMaxSize: 48,
-        });
-        
-        draggable.connect('drag-begin', () => {
-            actor.opacity = 100;
-            this._setupDragMonitor(actor, appIcon);
-            
-            // Notificar al sistema de magnificación
-            if (this._appManager._dockContainer._magnification) {
-                this._appManager._dockContainer._magnification.setDragging(true);
-            }
-            
-            log('[TuxDock] Drag comenzado');
-        });
-        
-        draggable.connect('drag-end', () => {
-            actor.opacity = 255;
-            this._onDragEnd(appIcon);
-            this._cleanupDragMonitor();
-            
-            // Restaurar magnificación
-            if (this._appManager._dockContainer._magnification) {
-                this._appManager._dockContainer._magnification.setDragging(false);
-            }
-            
-            log('[TuxDock] Drag terminado');
-        });
+    actor._delegate = {
+      ...originalDelegate,
 
-        actor._appIcon = appIcon;
-        actor._draggable = draggable;
-    }
+      app: appIcon.app,
 
-    _setupDragMonitor(actor, appIcon) {
-        this._isOutsideDock = false;
-        
-        this._dragMonitor = {
-            dragMotion: (dragEvent) => {
-                const [x, y] = global.get_pointer();
-                const dockBounds = this._getDockBounds();
-                
-                // Verificar si está fuera del dock
-                const isOutside = !this._isInsideDock(x, y, dockBounds);
-                
-                if (isOutside !== this._isOutsideDock) {
-                    this._isOutsideDock = isOutside;
-                    this._showRemovalIndicator(isOutside);
-                }
-                
-                return DND.DragMotionResult.CONTINUE;
-            }
-        };
-        
-        DND.addDragMonitor(this._dragMonitor);
-    }
+      getDragActor: () => {
+        return appIcon.app.create_icon_texture(48);
+      },
 
-    _cleanupDragMonitor() {
-        if (this._dragMonitor) {
-            DND.removeDragMonitor(this._dragMonitor);
-            this._dragMonitor = null;
+      getDragActorSource: () => {
+        return actor;
+      },
+
+      acceptDrop: (source, targetActor, x, y, time) => {
+        // Reordenar iconos dentro del dock
+        if (source.app && source !== targetActor._delegate) {
+          log("[TuxDock] Reordenando iconos");
+          return this._handleReorder(source.app, appIcon.app);
         }
-        
-        this._hideRemovalIndicator();
-        this._hideInsertionIndicator();
-        this._isOutsideDock = false;
+
+        if (originalDelegate.acceptDrop) {
+          return originalDelegate.acceptDrop(source, targetActor, x, y, time);
+        }
+
+        return false;
+      },
+
+      handleDragOver: (source, targetActor, x, y, time) => {
+        if (source.app) {
+          this._showInsertionIndicator(targetActor, x, y);
+          return DND.DragMotionResult.MOVE_DROP;
+        }
+
+        if (originalDelegate.handleDragOver) {
+          return originalDelegate.handleDragOver(
+            source,
+            targetActor,
+            x,
+            y,
+            time
+          );
+        }
+
+        return DND.DragMotionResult.CONTINUE;
+      },
+    };
+
+    const draggable = DND.makeDraggable(actor, {
+      restoreOnSuccess: false,
+      manualMode: false,
+      dragActorMaxSize: 48,
+    });
+
+    draggable.connect("drag-begin", () => {
+      actor.opacity = 100;
+      this._setupDragMonitor(actor, appIcon);
+
+      if (this._appManager._dockContainer._magnification) {
+        this._appManager._dockContainer._magnification.setDragging(true);
+      }
+
+      log("[TuxDock] Drag comenzado");
+    });
+
+    draggable.connect("drag-end", () => {
+      actor.opacity = 255;
+      this._onDragEnd(appIcon);
+      this._cleanupDragMonitor();
+
+      if (this._appManager._dockContainer._magnification) {
+        this._appManager._dockContainer._magnification.setDragging(false);
+      }
+
+      log("[TuxDock] Drag terminado");
+    });
+
+    actor._appIcon = appIcon;
+    actor._draggable = draggable;
+  }
+
+  _setupDragMonitor(actor, appIcon) {
+    this._isOutsideDock = false;
+
+    this._dragMonitor = {
+      dragMotion: (dragEvent) => {
+        const [x, y] = global.get_pointer();
+        const dockBounds = this._getDockBounds();
+
+        const isOutside = !this._isInsideDock(x, y, dockBounds);
+
+        if (isOutside !== this._isOutsideDock) {
+          this._isOutsideDock = isOutside;
+          this._showRemovalIndicator(isOutside);
+        }
+
+        return DND.DragMotionResult.CONTINUE;
+      },
+    };
+
+    DND.addDragMonitor(this._dragMonitor);
+  }
+
+  _cleanupDragMonitor() {
+    if (this._dragMonitor) {
+      DND.removeDragMonitor(this._dragMonitor);
+      this._dragMonitor = null;
     }
 
-    _getDockBounds() {
-        const container = this._appManager._dockContainer.getContainer();
-        if (!container) return null;
-        
-        const [x, y] = container.get_transformed_position();
-        const width = container.width;
-        const height = container.height;
-        
-        return {
-            x: x - this._dragThreshold,
-            y: y - this._dragThreshold,
-            width: width + (this._dragThreshold * 2),
-            height: height + (this._dragThreshold * 2)
-        };
-    }
+    this._hideRemovalIndicator();
+    this._hideInsertionIndicator();
+    this._isOutsideDock = false;
+  }
 
-    _isInsideDock(x, y, bounds) {
-        if (!bounds) return true;
-        
-        return x >= bounds.x && 
-               x <= bounds.x + bounds.width &&
-               y >= bounds.y && 
-               y <= bounds.y + bounds.height;
-    }
+  _getDockBounds() {
+    const container = this._appManager._dockContainer.getContainer();
+    if (!container) return null;
 
-    _showRemovalIndicator(show) {
-        if (show) {
-            if (!this._removalIndicator) {
-                this._removalIndicator = new St.Label({
-                    text: '✕ Soltar para quitar',
-                    style_class: 'tux-dock-removal-indicator',
-                });
-                
-                this._removalIndicator.set_style(`
+    const [x, y] = container.get_transformed_position();
+    const width = container.width;
+    const height = container.height;
+
+    return {
+      x: x - this._dragThreshold,
+      y: y - this._dragThreshold,
+      width: width + this._dragThreshold * 2,
+      height: height + this._dragThreshold * 2,
+    };
+  }
+
+  _isInsideDock(x, y, bounds) {
+    if (!bounds) return true;
+
+    return (
+      x >= bounds.x &&
+      x <= bounds.x + bounds.width &&
+      y >= bounds.y &&
+      y <= bounds.y + bounds.height
+    );
+  }
+
+  _showRemovalIndicator(show) {
+    if (show) {
+      if (!this._removalIndicator) {
+        this._removalIndicator = new St.Label({
+          text: "✕ Soltar para quitar",
+          style_class: "tux-dock-removal-indicator",
+        });
+
+        this._removalIndicator.set_style(`
                     background-color: rgba(231, 76, 60, 0.9);
                     color: white;
                     padding: 8px 16px;
@@ -165,270 +183,264 @@ export class DragDropHandler {
                     font-size: 12pt;
                     font-weight: bold;
                 `);
-                
-                Main.layoutManager.addChrome(this._removalIndicator);
-            }
-            
-            // Posicionar en el centro superior de la pantalla
-            const monitor = Main.layoutManager.primaryMonitor;
-            const [mouseX, mouseY] = global.get_pointer();
-            
-            this._removalIndicator.set_position(
-                mouseX - this._removalIndicator.width / 2,
-                mouseY - 60
-            );
-            
-            this._removalIndicator.opacity = 0;
-            this._removalIndicator.show();
-            
-            this._removalIndicator.ease({
-                opacity: 255,
-                duration: 150,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD
-            });
-        } else {
-            this._hideRemovalIndicator();
+
+        Main.layoutManager.addChrome(this._removalIndicator);
+      }
+
+      const [mouseX, mouseY] = global.get_pointer();
+
+      this._removalIndicator.set_position(
+        mouseX - this._removalIndicator.width / 2,
+        mouseY - 60
+      );
+
+      this._removalIndicator.opacity = 0;
+      this._removalIndicator.show();
+
+      this._removalIndicator.ease({
+        opacity: 255,
+        duration: 150,
+        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+      });
+    } else {
+      this._hideRemovalIndicator();
+    }
+  }
+
+  _hideRemovalIndicator() {
+    if (this._removalIndicator) {
+      this._removalIndicator.ease({
+        opacity: 0,
+        duration: 150,
+        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        onComplete: () => {
+          if (this._removalIndicator) {
+            Main.layoutManager.removeChrome(this._removalIndicator);
+            this._removalIndicator.destroy();
+            this._removalIndicator = null;
+          }
+        },
+      });
+    }
+  }
+
+  _showInsertionIndicator(targetActor, x, y) {
+    // TODO: dibujar la línea entre iconos
+    // Por ahora, solo limpiamos cualquier indicador previo
+    this._hideInsertionIndicator();
+  }
+
+  _hideInsertionIndicator() {
+    if (this._insertionIndicator) {
+      this._insertionIndicator.destroy();
+      this._insertionIndicator = null;
+    }
+  }
+
+  _onDragEnd(appIcon) {
+    // Soltado fuera del dock -> eliminar de favoritos
+    if (this._isOutsideDock) {
+      const favorites = AppFavorites.getAppFavorites();
+      const appId = appIcon.app.get_id();
+
+      if (favorites.isFavorite(appId)) {
+        log(`[TuxDock] Removiendo app de favoritos: ${appId}`);
+        favorites.removeFavorite(appId);
+        this._showPoofAnimation(appIcon);
+      }
+    }
+
+    // Forzar refresh para reorganizar (usa GLib, no setTimeout)
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+      this._appManager.refresh();
+      return GLib.SOURCE_REMOVE;
+    });
+  }
+
+  _showPoofAnimation(appIcon) {
+    const actor = appIcon.getActor();
+    if (!actor) return;
+
+    actor.ease({
+      opacity: 0,
+      scale_x: 0.3,
+      scale_y: 0.3,
+      duration: 200,
+      mode: Clutter.AnimationMode.EASE_IN_BACK,
+      onComplete: () => {
+        // El refresh del appManager se encargará de eliminarlo
+      },
+    });
+  }
+
+  /**
+   * Reordenar favoritos usando la API real de AppFavorites
+   */
+  _handleReorder(sourceApp, targetApp) {
+    try {
+      const favorites = AppFavorites.getAppFavorites();
+
+      const list = favorites.getFavorites();
+      const ids = list.map((app) => app.get_id());
+
+      const sourceId = sourceApp.get_id();
+      const targetId = targetApp.get_id();
+
+      const sourceIndex = ids.indexOf(sourceId);
+      const targetIndex = ids.indexOf(targetId);
+
+      if (sourceIndex === -1 || targetIndex === -1) return false;
+
+      // Índice destino corregido si arrastramos hacia delante
+      const newTargetIndex =
+        sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+
+      log(`[TuxDock] moveFavorite ${sourceId} -> posición ${newTargetIndex}`);
+
+      favorites.moveFavorite(sourceId, newTargetIndex);
+      return true;
+    } catch (e) {
+      logError("Error reordenando iconos", e);
+      return false;
+    }
+  }
+
+  setupDropTarget(container, appManager) {
+    if (!container) return;
+
+    container.reactive = true;
+    container.track_hover = true;
+
+    container._delegate = {
+      acceptDrop: (source, actor, x, y, time) => {
+        log("[TuxDock] acceptDrop llamado");
+
+        if (source.app) {
+          log(`[TuxDock] Fijando app: ${source.app.get_name()}`);
+          const favorites = AppFavorites.getAppFavorites();
+          const appId = source.app.get_id();
+
+          if (!favorites.isFavorite(appId)) {
+            favorites.addFavorite(appId);
+            log(`[TuxDock] App ${appId} añadida a favoritos`);
+          }
+
+          appManager.refresh();
+          return true;
         }
-    }
 
-    _hideRemovalIndicator() {
-        if (this._removalIndicator) {
-            this._removalIndicator.ease({
-                opacity: 0,
-                duration: 150,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onComplete: () => {
-                    if (this._removalIndicator) {
-                        Main.layoutManager.removeChrome(this._removalIndicator);
-                        this._removalIndicator.destroy();
-                        this._removalIndicator = null;
-                    }
-                }
-            });
+        log("[TuxDock] Tipo de source no soportado");
+        return false;
+      },
+
+      handleDragOver: (source, actor, x, y, time) => {
+        if (source.app) {
+          return DND.DragMotionResult.COPY_DROP;
         }
-    }
+        return DND.DragMotionResult.CONTINUE;
+      },
+    };
 
-    _showInsertionIndicator(targetActor, x, y) {
-        // TODO: Implementar indicador de inserción visual
-        // Mostrar una línea vertical entre iconos donde se insertará
-    }
+    log("[TuxDock] Drop target configurado");
+  }
 
-    _hideInsertionIndicator() {
-        if (this._insertionIndicator) {
-            this._insertionIndicator.destroy();
-            this._insertionIndicator = null;
+  _handleFolderDrop(uri, appManager) {
+    try {
+      const file = Gio.File.new_for_uri(uri);
+      const info = file.query_info(
+        "standard::type",
+        Gio.FileQueryInfoFlags.NONE,
+        null
+      );
+
+      if (info.get_file_type() === Gio.FileType.DIRECTORY) {
+        const settings = appManager._settings;
+        const pinnedFolders = settings.getPinnedFolders();
+
+        if (!pinnedFolders.includes(uri)) {
+          pinnedFolders.push(uri);
+          settings.setPinnedFolders(pinnedFolders);
+
+          const folderName = file.get_basename();
+          appManager.addStack(uri, folderName);
+
+          log(`Carpeta ${folderName} añadida al dock`);
+          return true;
         }
-    }
+      }
 
-    _onDragEnd(appIcon) {
-        // Si se soltó fuera del dock, remover de favoritos
-        if (this._isOutsideDock) {
-            const favorites = AppFavorites.getAppFavorites();
-            const appId = appIcon.app.get_id();
-            
-            if (favorites.isFavorite(appId)) {
-                log(`[TuxDock] Removiendo app de favoritos: ${appId}`);
-                favorites.removeFavorite(appId);
-                
-                // Mostrar animación de "poof"
-                this._showPoofAnimation(appIcon);
-            }
+      return false;
+    } catch (e) {
+      logError("Error manejando drop de carpeta", e);
+      return false;
+    }
+  }
+
+  /**
+   * Configurar un icono de app para aceptar drops de archivos
+   */
+  setupFileDropTarget(appIcon) {
+    const actor = appIcon.getActor();
+    if (!actor) return;
+
+    const originalDelegate = actor._delegate || {};
+
+    actor._delegate = {
+      ...originalDelegate,
+
+      acceptDrop: (source, targetActor, x, y, time) => {
+        if (source._fileUri) {
+          return this._openFileWithApp(appIcon.app, source._fileUri);
         }
-        
-        // Forzar refresh para reorganizar
-        setTimeout(() => {
-            this._appManager.refresh();
-        }, 100);
-    }
 
-    _showPoofAnimation(appIcon) {
-        const actor = appIcon.getActor();
-        if (!actor) return;
-        
-        // Animación simple de desvanecimiento con escala
-        actor.ease({
-            opacity: 0,
-            scale_x: 0.3,
-            scale_y: 0.3,
-            duration: 200,
-            mode: Clutter.AnimationMode.EASE_IN_BACK,
-            onComplete: () => {
-                // El refresh del appManager se encargará de removerlo
-            }
-        });
-    }
-
-    _handleReorder(sourceApp, targetApp) {
-        try {
-            const favorites = AppFavorites.getAppFavorites();
-            const favIds = favorites.getFavoriteMap();
-            const ids = Object.keys(favIds);
-            
-            const sourceId = sourceApp.get_id();
-            const targetId = targetApp.get_id();
-            
-            const sourceIndex = ids.indexOf(sourceId);
-            const targetIndex = ids.indexOf(targetId);
-            
-            if (sourceIndex !== -1 && targetIndex !== -1) {
-                // Remover el source
-                ids.splice(sourceIndex, 1);
-                // Insertar en la nueva posición
-                const newTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-                ids.splice(newTargetIndex, 0, sourceId);
-                
-                // Actualizar favoritos
-                favorites.setFavorites(ids);
-                log(`[TuxDock] Apps reordenadas: ${sourceId} -> posición ${newTargetIndex}`);
-                
-                return true;
-            }
-            
-            return false;
-        } catch (e) {
-            logError('Error reordenando iconos', e);
-            return false;
+        if (originalDelegate.acceptDrop) {
+          return originalDelegate.acceptDrop(source, targetActor, x, y, time);
         }
-    }
 
-    setupDropTarget(container, appManager) {
-        if (!container) return;
+        return false;
+      },
 
-        // Hacer el contenedor receptivo a drops
-        container.reactive = true;
-        container.track_hover = true;
-
-        container._delegate = {
-            acceptDrop: (source, actor, x, y, time) => {
-                log('[TuxDock] acceptDrop llamado');
-                
-                // Si es un icono de app desde el lanzador, fijarlo
-                if (source.app) {
-                    log(`[TuxDock] Fijando app: ${source.app.get_name()}`);
-                    const favorites = AppFavorites.getAppFavorites();
-                    const appId = source.app.get_id();
-                    
-                    // Verificar si ya está en favoritos
-                    if (!favorites.isFavorite(appId)) {
-                        favorites.addFavorite(appId);
-                        log(`[TuxDock] App ${appId} añadida a favoritos`);
-                    }
-                    
-                    appManager.refresh();
-                    return true;
-                }
-                
-                log('[TuxDock] Tipo de source no soportado');
-                return false;
-            },
-            
-            handleDragOver: (source, actor, x, y, time) => {
-                // Mostrar que se puede soltar
-                if (source.app) {
-                    return DND.DragMotionResult.COPY_DROP;
-                }
-                return DND.DragMotionResult.CONTINUE;
-            }
-        };
-        
-        log('[TuxDock] Drop target configurado');
-    }
-    
-    _handleFolderDrop(uri, appManager) {
-        try {
-            // Verificar si es una carpeta
-            const file = Gio.File.new_for_uri(uri);
-            const info = file.query_info('standard::type', Gio.FileQueryInfoFlags.NONE, null);
-            
-            if (info.get_file_type() === Gio.FileType.DIRECTORY) {
-                // Es una carpeta, añadirla a pinned-folders
-                const settings = appManager._settings;
-                const pinnedFolders = settings.getPinnedFolders();
-                
-                if (!pinnedFolders.includes(uri)) {
-                    pinnedFolders.push(uri);
-                    settings.setPinnedFolders(pinnedFolders);
-                    
-                    // Crear stack icon para la carpeta
-                    const folderName = file.get_basename();
-                    appManager.addStack(uri, folderName);
-                    
-                    log(`Carpeta ${folderName} añadida al dock`);
-                    return true;
-                }
-            }
-            
-            return false;
-        } catch (e) {
-            logError('Error manejando drop de carpeta', e);
-            return false;
+      handleDragOver: (source, targetActor, x, y, time) => {
+        if (source._fileUri) {
+          targetActor.add_style_pseudo_class("drop-target");
+          return DND.DragMotionResult.COPY_DROP;
         }
-    }
 
-    /**
-     * Configurar un icono de app para aceptar drops de archivos
-     */
-    setupFileDropTarget(appIcon) {
-        const actor = appIcon.getActor();
-        if (!actor) return;
-
-        const originalDelegate = actor._delegate || {};
-        
-        actor._delegate = {
-            ...originalDelegate,
-            
-            acceptDrop: (source, actor, x, y, time) => {
-                // Si es un archivo, abrirlo con esta app
-                if (source._fileUri) {
-                    return this._openFileWithApp(appIcon.app, source._fileUri);
-                }
-                
-                // Si es otra cosa, usar el delegate original
-                if (originalDelegate.acceptDrop) {
-                    return originalDelegate.acceptDrop(source, actor, x, y, time);
-                }
-                
-                return false;
-            },
-            
-            handleDragOver: (source, actor, x, y, time) => {
-                // Aceptar archivos
-                if (source._fileUri) {
-                    actor.add_style_pseudo_class('drop-target');
-                    return DND.DragMotionResult.COPY_DROP;
-                }
-                
-                // Delegar al original
-                if (originalDelegate.handleDragOver) {
-                    return originalDelegate.handleDragOver(source, actor, x, y, time);
-                }
-                
-                return DND.DragMotionResult.CONTINUE;
-            },
-            
-            // Preservar otros métodos del delegate original
-            getDragActor: originalDelegate.getDragActor,
-            getDragActorSource: originalDelegate.getDragActorSource
-        };
-    }
-
-    _openFileWithApp(app, fileUri) {
-        try {
-            const file = Gio.File.new_for_uri(fileUri);
-            const context = global.create_app_launch_context(0, -1);
-            
-            app.launch([file], context);
-            
-            log(`Archivo ${fileUri} abierto con ${app.get_name()}`);
-            return true;
-            
-        } catch (e) {
-            logError(`Error abriendo archivo con ${app.get_name()}`, e);
-            return false;
+        if (originalDelegate.handleDragOver) {
+          return originalDelegate.handleDragOver(
+            source,
+            targetActor,
+            x,
+            y,
+            time
+          );
         }
-    }
 
-    destroy() {
-        this._cleanupDragMonitor();
+        return DND.DragMotionResult.CONTINUE;
+      },
+
+      getDragActor: originalDelegate.getDragActor,
+      getDragActorSource: originalDelegate.getDragActorSource,
+      app: originalDelegate.app || appIcon.app,
+    };
+  }
+
+  _openFileWithApp(app, fileUri) {
+    try {
+      const file = Gio.File.new_for_uri(fileUri);
+      const context = global.create_app_launch_context(0, -1);
+
+      app.launch([file], context);
+
+      log(`Archivo ${fileUri} abierto con ${app.get_name()}`);
+      return true;
+    } catch (e) {
+      logError(`Error abriendo archivo con ${app.get_name()}`, e);
+      return false;
     }
+  }
+
+  destroy() {
+    this._cleanupDragMonitor();
+  }
 }

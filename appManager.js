@@ -1,365 +1,309 @@
-import Shell from 'gi://Shell';
-import St from 'gi://St';
-import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
-import { AppIcon } from './appIcon.js';
-import { DockSettings } from './settings.js';
-import { AppLauncherIcon, TrashIcon } from './specialIcons.js';
-import { DockAnimations, NotificationBouncer } from './animations.js';
-import { StackIcon } from './stackIcon.js';
-import { DragDropHandler } from './dragAndDrop.js';
+import Shell from "gi://Shell";
+import St from "gi://St";
+import GLib from "gi://GLib";
+
+import * as AppFavorites from "resource:///org/gnome/shell/ui/appFavorites.js";
+
+import { AppIcon } from "./appIcon.js";
+import { DockSettings } from "./settings.js";
+import { AppLauncherIcon, TrashIcon } from "./specialIcons.js";
+import { DockAnimations, NotificationBouncer } from "./animations.js";
+import { StackIcon } from "./stackIcon.js";
+import { DragDropHandler } from "./dragAndDrop.js";
 
 /**
  * Gestiona las aplicaciones mostradas en el dock
- * Maneja favoritos, apps abiertas y actualización de iconos
+ * - apps fijadas
+ * - apps abiertas
+ * - iconos especiales
  */
 export class AppManager {
-    constructor(dockContainer) {
-        this._dockContainer = dockContainer;
-        this._appSystem = Shell.AppSystem.get_default();
-        this._windowTracker = Shell.WindowTracker.get_default();
-        this._appIcons = new Map();
-        this._signalIds = [];
-        this._settings = new DockSettings();
-        this._updateTimeout = null;
-        this._appLauncher = null;
-        this._trashIcon = null;
-        this._animations = new DockAnimations();
-        this._notificationBouncer = null;
-        this._stackIcons = new Map(); // Mapa de stacks (path -> StackIcon)
-        this._separator = null; // Separador entre apps fijadas y en ejecución
-        this._dragDropHandler = new DragDropHandler(this);
+  constructor(dockContainer) {
+    this._dockContainer = dockContainer;
+
+    this._appSystem = Shell.AppSystem.get_default();
+    this._windowTracker = Shell.WindowTracker.get_default();
+
+    this._appIcons = new Map(); // appId -> AppIcon
+    this._stackIcons = new Map(); // path -> StackIcon
+
+    this._settings = new DockSettings();
+    this._signalIds = [];
+    this._updateTimeout = null;
+
+    this._appLauncher = null;
+    this._trashIcon = null;
+    this._separatorActors = [];
+
+    this._animations = new DockAnimations();
+    this._notificationBouncer = null;
+
+    this._dragDropHandler = new DragDropHandler(this);
+  }
+
+  /* ---------------- enable / disable ---------------- */
+
+  enable() {
+    const container = this._dockContainer.getContainer();
+    if (container) this._dragDropHandler.setupDropTarget(container, this);
+
+    // cambios de instalación, ventanas, favoritos y nuevas ventanas
+    this._signalIds.push(
+      this._appSystem.connect("installed-changed", () =>
+        this._scheduleRefresh()
+      ),
+      this._windowTracker.connect("tracked-windows-changed", () =>
+        this._scheduleRefresh()
+      ),
+      AppFavorites.getAppFavorites().connect("changed", () => this.refresh()),
+      globalThis.display.connect("window-created", () =>
+        this._scheduleRefresh()
+      )
+    );
+
+    // notificaciones con rebote
+    this._notificationBouncer = new NotificationBouncer(this, this._animations);
+    this._notificationBouncer.enable();
+
+    this.refresh();
+  }
+
+  disable() {
+    if (this._notificationBouncer) {
+      this._notificationBouncer.disable();
+      this._notificationBouncer = null;
     }
 
-    enable() {
-        console.log('[TuxDock] AppManager.enable() iniciando...');
-        
-        // Habilitar drag & drop en el contenedor del dock
-        const container = this._dockContainer.getContainer();
-        if (container) {
-            this._dragDropHandler.setupDropTarget(container, this);
-        }
-        
-        // Conectar señales para detectar cambios
-        this._signalIds.push(
-            this._appSystem.connect('installed-changed', () => this._scheduleRefresh())
-        );
-        this._signalIds.push(
-            this._windowTracker.connect('tracked-windows-changed', () => this._scheduleRefresh())
-        );
-        this._signalIds.push(
-            AppFavorites.getAppFavorites().connect('changed', () => this.refresh())
-        );
+    if (this._animations) this._animations.cleanup();
 
-        // Conectar señal para actualizar indicadores cuando cambian ventanas
-        this._signalIds.push(
-            global.display.connect('window-created', () => this._scheduleRefresh())
-        );
-
-        console.log('[TuxDock] Señales conectadas, llamando a refresh()...');
-
-        // Habilitar rebote de notificaciones
-        this._notificationBouncer = new NotificationBouncer(this, this._animations);
-        this._notificationBouncer.enable();
-
-        // Cargar apps iniciales
-        this.refresh();
-        
-        console.log('[TuxDock] AppManager.enable() completado');
+    if (this._updateTimeout) {
+      GLib.source_remove(this._updateTimeout);
+      this._updateTimeout = null;
     }
 
-    _scheduleRefresh() {
-        // Evitar múltiples refreshes en corto tiempo
-        if (this._updateTimeout) {
-            return;
-        }
+    this._signalIds.forEach((id) => {
+      try {
+        this._appSystem.disconnect(id);
+      } catch (error) {
+        console.warn("Failed to disconnect appSystem signal:", error);
+      }
+      try {
+        this._windowTracker.disconnect(id);
+      } catch (error) {
+        console.warn("Failed to disconnect windowTracker signal:", error);
+      }
+      try {
+        AppFavorites.getAppFavorites().disconnect(id);
+      } catch (error) {
+        console.warn("Failed to disconnect favorites signal:", error);
+      }
+      try {
+        globalThis.display.disconnect(id);
+      } catch (error) {
+        console.warn("Failed to disconnect display signal:", error);
+      }
+    });
+    this._signalIds = [];
 
-        this._updateTimeout = setTimeout(() => {
-            this.refresh();
-            this._updateTimeout = null;
-        }, 100);
+    this._destroyAllIcons();
+
+    this._stackIcons.forEach((stack) => stack.destroy());
+    this._stackIcons.clear();
+  }
+
+  /* ---------------- actualización ---------------- */
+
+  _scheduleRefresh() {
+    // debounce seguro
+    if (this._updateTimeout) return;
+
+    this._updateTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+      this._updateTimeout = null;
+      this.refresh();
+      return GLib.SOURCE_REMOVE;
+    });
+  }
+
+  refresh() {
+    const favorites = AppFavorites.getAppFavorites().getFavorites();
+    const running = this._appSystem.get_running();
+
+    const appsMap = new Map();
+    const order = [];
+
+    // favoritas primero
+    favorites.forEach((app) => {
+      const id = app.get_id();
+      appsMap.set(id, app);
+      order.push(id);
+    });
+
+    this._favoritesCount = favorites.length;
+
+    // apps abiertas que no son favoritas
+    running.forEach((app) => {
+      const id = app.get_id();
+      if (!appsMap.has(id)) {
+        appsMap.set(id, app);
+        order.push(id);
+      }
+    });
+
+    const existingOrder = Array.from(this._appIcons.keys());
+    const needsRebuild = !this._arraysEqual(existingOrder, order);
+
+    if (needsRebuild) this._rebuildDock(appsMap, order);
+    else this._appIcons.forEach((icon) => icon.updateState());
+  }
+
+  _arraysEqual(a, b) {
+    if (a.length !== b.length) return false;
+
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+
+    return true;
+  }
+
+  /* ---------------- reconstrucción ---------------- */
+
+  _rebuildDock(appsMap, order) {
+    this._dockContainer.clearIcons();
+    this._destroyAllIcons();
+    this._separatorActors = [];
+
+    let added = 0;
+
+    // lanzador al inicio
+    if (this._settings.getShowAppLauncher()) this._addAppLauncher();
+
+    order.forEach((appId) => {
+      const app = appsMap.get(appId);
+      if (!app) return;
+
+      if (
+        added === this._favoritesCount &&
+        added > 0 &&
+        order.length > this._favoritesCount
+      ) {
+        this._addSeparator();
+      }
+
+      this._addAppIcon(app);
+      added++;
+    });
+
+    if (this._settings.getShowTrash() && added > 0) {
+      this._addSeparator();
+      this._addTrashIcon();
     }
 
-    refresh() {
-        const favorites = AppFavorites.getAppFavorites().getFavorites();
-        const runningApps = this._appSystem.get_running();
+    this._dockContainer.updatePosition();
+  }
 
-        console.log('[TuxDock] Favoritos encontrados:', favorites.length);
-        console.log('[TuxDock] Apps en ejecución:', runningApps.length);
+  forceRebuild() {
+    this._updateTimeout = null;
+    this.refresh();
+  }
 
-        // Crear lista ordenada de apps
-        const appsMap = new Map();
-        const favoriteIds = new Set();
-        const appsOrder = [];
+  /* ---------------- creación de iconos ---------------- */
 
-        // Añadir favoritas en orden
-        favorites.forEach(app => {
-            const id = app.get_id();
-            appsMap.set(id, app);
-            favoriteIds.add(id);
-            appsOrder.push(id);
-        });
-        
-        // Guardar índice donde terminan las favoritas
-        this._favoritesCount = favorites.length;
+  _addAppIcon(app) {
+    const size = this._settings.getIconSize();
+    const iconObj = new AppIcon(app, this._windowTracker, size);
+    const actor = iconObj.build();
 
-        // Añadir apps en ejecución que no son favoritas
-        runningApps.forEach(app => {
-            const id = app.get_id();
-            if (!appsMap.has(id)) {
-                appsMap.set(id, app);
-                appsOrder.push(id);
-            }
-        });
+    this._dockContainer.addIcon(actor);
+    this._appIcons.set(app.get_id(), iconObj);
 
-        console.log('[TuxDock] Total apps a mostrar:', appsOrder.length);
+    // drag & drop por ítem
+    this._dragDropHandler.makeDraggable(iconObj);
+    this._dragDropHandler.setupFileDropTarget(iconObj);
+  }
 
-        // Verificar si hay cambios antes de recrear todo
-        const currentOrder = Array.from(this._appIcons.keys());
-        const needsRebuild = !this._arraysEqual(currentOrder, appsOrder);
+  _addAppLauncher() {
+    const size = this._settings.getIconSize();
+    this._appLauncher = new AppLauncherIcon(size);
 
-        console.log('[TuxDock] Necesita rebuild:', needsRebuild);
+    const actor = this._appLauncher.build();
+    this._dockContainer.addIcon(actor);
+  }
 
-        if (needsRebuild) {
-            this._rebuildDock(appsMap, appsOrder);
-        } else {
-            // Solo actualizar estados visuales
-            this._appIcons.forEach(icon => icon.updateState());
-        }
-    }
+  _addTrashIcon() {
+    const size = this._settings.getIconSize();
+    this._trashIcon = new TrashIcon(size);
 
-    _rebuildDock(appsMap, appsOrder) {
-        // Limpiar iconos existentes
-        this._dockContainer.clearIcons();
-        this._destroyAllIcons();
+    const actor = this._trashIcon.build();
+    this._dockContainer.addIcon(actor);
+  }
 
-        // Añadir lanzador de aplicaciones al inicio (si está habilitado)
-        if (this._settings.getShowAppLauncher()) {
-            this._addAppLauncher();
-        }
-        
-        let addedCount = 0;
+  _addSeparator() {
+    const position = this._settings.getPosition();
+    const horizontal = position === "BOTTOM" || position === "TOP";
 
-        // Crear iconos en orden
-        appsOrder.forEach(appId => {
-            const app = appsMap.get(appId);
-            if (app) {
-                // Añadir separador después de las favoritas
-                if (addedCount === this._favoritesCount && 
-                    addedCount > 0 && 
-                    appsOrder.length > this._favoritesCount) {
-                    this._addSeparator();
-                }
-                
-                this._addAppIcon(app);
-                addedCount++;
-            }
-        });
+    const separator = new St.Widget({
+      style_class: "tux-dock-separator",
+      reactive: false,
+    });
 
-        // Añadir separador antes de papelera si hay iconos
-        if (this._settings.getShowTrash() && addedCount > 0) {
-            this._addSeparator();
-            this._addTrashIcon();
-        }
-
-        // Actualizar posición del dock con animación
-        this._dockContainer.updatePosition();
-    }
-
-    forceRebuild() {
-        // Forzar reconstrucción completa del dock
-        const favorites = AppFavorites.getAppFavorites().getFavorites();
-        const runningApps = this._appSystem.get_running();
-
-        const appsMap = new Map();
-        const appsOrder = [];
-
-        favorites.forEach(app => {
-            const id = app.get_id();
-            appsMap.set(id, app);
-            appsOrder.push(id);
-        });
-
-        runningApps.forEach(app => {
-            const id = app.get_id();
-            if (!appsMap.has(id)) {
-                appsMap.set(id, app);
-                appsOrder.push(id);
-            }
-        });
-
-        this._rebuildDock(appsMap, appsOrder);
-    }
-
-    _arraysEqual(a, b) {
-        if (a.length !== b.length) return false;
-        for (let i = 0; i < a.length; i++) {
-            if (a[i] !== b[i]) return false;
-        }
-        return true;
-    }
-
-    _addAppIcon(app) {
-        const iconSize = this._settings.getIconSize();
-        const appIcon = new AppIcon(app, this._windowTracker, iconSize);
-        const iconActor = appIcon.build();
-        
-        this._dockContainer.addIcon(iconActor);
-        this._appIcons.set(app.get_id(), appIcon);
-    }
-
-    _addAppLauncher() {
-        const iconSize = this._settings.getIconSize();
-        this._appLauncher = new AppLauncherIcon(iconSize);
-        const launcherActor = this._appLauncher.build();
-        this._dockContainer.addIcon(launcherActor);
-    }
-
-    _addTrashIcon() {
-        const iconSize = this._settings.getIconSize();
-        this._trashIcon = new TrashIcon(iconSize);
-        const trashActor = this._trashIcon.build();
-        this._dockContainer.addIcon(trashActor);
-    }
-
-    _addSeparator() {
-        // Crear separador visual
-        const position = this._settings.getPosition();
-        const isHorizontal = position === 'BOTTOM';
-        
-        this._separator = new St.Widget({
-            style_class: 'tux-dock-separator',
-            x_expand: !isHorizontal,
-            y_expand: isHorizontal,
-        });
-        
-        if (isHorizontal) {
-            // Dock horizontal: línea vertical
-            this._separator.set_style(`
-                background-color: rgba(255, 255, 255, 0.3);
-                margin: 4px 8px;
+    if (horizontal) {
+      separator.set_style(`
+                background-color: rgba(255,255,255,0.35);
                 min-width: 1px;
                 max-width: 1px;
+                margin: 6px 10px;
             `);
-        } else {
-            // Dock vertical: línea horizontal
-            this._separator.set_style(`
-                background-color: rgba(255, 255, 255, 0.3);
-                margin: 8px 4px;
+    } else {
+      separator.set_style(`
+                background-color: rgba(255,255,255,0.35);
                 min-height: 1px;
                 max-height: 1px;
+                margin: 10px 6px;
             `);
-        }
-        
-        this._dockContainer.addIcon(this._separator);
     }
 
-    handleIconDrop(draggedIcon, x, y) {
-        // Implementar reordenamiento después
-        // Por ahora solo refrescar
-        this.refresh();
+    this._separatorActors.push(separator);
+    this._dockContainer.addIcon(separator);
+  }
+
+  _destroyAllIcons() {
+    this._appIcons.forEach((icon) => icon.destroy());
+    this._appIcons.clear();
+
+    if (this._appLauncher) {
+      this._appLauncher.destroy();
+      this._appLauncher = null;
     }
 
-    _destroyAllIcons() {
-        this._appIcons.forEach(icon => icon.destroy());
-        this._appIcons.clear();
-        
-        if (this._appLauncher) {
-            this._appLauncher.destroy();
-            this._appLauncher = null;
-        }
-        
-        if (this._trashIcon) {
-            this._trashIcon.destroy();
-            this._trashIcon = null;
-        }
-        
-        if (this._separator) {
-            this._separator.destroy();
-            this._separator = null;
-        }
+    if (this._trashIcon) {
+      this._trashIcon.destroy();
+      this._trashIcon = null;
     }
 
-    disable() {
-        // Deshabilitar notificaciones
-        if (this._notificationBouncer) {
-            this._notificationBouncer.disable();
-            this._notificationBouncer = null;
-        }
+    this._separatorActors.forEach((s) => s.destroy());
+    this._separatorActors = [];
+  }
 
-        // Limpiar animaciones
-        if (this._animations) {
-            this._animations.cleanup();
-        }
+  /* ---------------- stacks (carpetas) ---------------- */
 
-        // Limpiar timeout
-        if (this._updateTimeout) {
-            clearTimeout(this._updateTimeout);
-            this._updateTimeout = null;
-        }
+  addStack(path, name) {
+    if (this._stackIcons.has(path)) return;
 
-        // Desconectar señales
-        this._signalIds.forEach(id => {
-            try {
-                this._appSystem.disconnect(id);
-            } catch (e) {
-                try {
-                    this._windowTracker.disconnect(id);
-                } catch (e2) {
-                    try {
-                        AppFavorites.getAppFavorites().disconnect(id);
-                    } catch (e3) {
-                        try {
-                            global.display.disconnect(id);
-                        } catch (e4) {
-                            // Ignorar errores al desconectar
-                        }
-                    }
-                }
-            }
-        });
-        this._signalIds = [];
+    const stack = new StackIcon(path, name);
+    this._stackIcons.set(path, stack);
 
-        // Destruir iconos
-        this._destroyAllIcons();
-        
-        // Destruir stacks
-        this._stackIcons.forEach(stack => stack.destroy());
-        this._stackIcons.clear();
-    }
+    const container = this._dockContainer.getContainer();
+    if (container) container.add_child(stack.actor);
+  }
 
-    /**
-     * Añadir un stack (carpeta) al dock
-     */
-    addStack(stackPath, stackName) {
-        if (this._stackIcons.has(stackPath)) {
-            return; // Ya existe
-        }
-        
-        const stackIcon = new StackIcon(stackPath, stackName);
-        this._stackIcons.set(stackPath, stackIcon);
-        
-        // Añadir al contenedor
-        const container = this._dockContainer.getIconsContainer();
-        if (container) {
-            container.add_child(stackIcon.actor);
-        }
-    }
+  removeStack(path) {
+    const stack = this._stackIcons.get(path);
+    if (!stack) return;
 
-    /**
-     * Eliminar un stack del dock
-     */
-    removeStack(stackPath) {
-        const stackIcon = this._stackIcons.get(stackPath);
-        if (stackIcon) {
-            stackIcon.destroy();
-            this._stackIcons.delete(stackPath);
-        }
-    }
+    stack.destroy();
+    this._stackIcons.delete(path);
+  }
 
-    /**
-     * Obtener todos los stacks
-     */
-    getStacks() {
-        return Array.from(this._stackIcons.keys());
-    }
+  getStacks() {
+    return Array.from(this._stackIcons.keys());
+  }
 }

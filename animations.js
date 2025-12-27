@@ -1,345 +1,299 @@
-import Clutter from 'gi://Clutter';
-import Shell from 'gi://Shell';
+import Clutter from "gi://Clutter";
+import Shell from "gi://Shell";
+import GLib from "gi://GLib";
 
 /**
  * Maneja animaciones del dock (rebotes, entradas, salidas)
  */
 export class DockAnimations {
-    constructor() {
-        this._bounceAnimations = new Map();
-        this._continuousBounces = new Map(); // Para rebotes continuos hasta que se abra ventana
-        this._windowTracker = Shell.WindowTracker.get_default();
-    }
+  constructor() {
+    this._bounceAnimations = new Map();
+    this._continuousBounces = new Map();
+    this._windowTracker = Shell.WindowTracker.get_default();
+  }
 
-    /**
-     * Anima un rebote (bounce) en un icono
-     * Útil para notificaciones o cuando se abre una app
-     */
-    bounceIcon(actor, bounces = 3, intensity = 0.3) {
-        if (!actor) return;
+  /* ------------- bounce simple estilo macOS ------------- */
 
-        // Cancelar animación previa si existe y resetear posición completamente
-        const existingAnimation = this._bounceAnimations.get(actor);
-        if (existingAnimation) {
-            actor.remove_all_transitions();
-            actor.translation_y = 0;
-            actor.translation_x = 0;
-            actor.scale_x = 1.0;
-            actor.scale_y = 1.0;
-            this._bounceAnimations.delete(actor);
-        }
-        
-        // Guardar escala original para restaurar después
-        const originalScaleX = actor.scale_x;
-        const originalScaleY = actor.scale_y;
+  bounceIcon(actor, bounces = 3, intensity = 0.35) {
+    if (!actor) return;
 
-        let currentBounce = 0;
-        const bounceDuration = 150;
-        const originalIntensity = intensity;
+    this.stopAllAnimations(actor);
 
-        const doBounce = () => {
-            if (currentBounce >= bounces) {
-                // Asegurar que termina en posición 0 de forma forzada
-                actor.remove_all_transitions();
-                actor.translation_y = 0;
-                actor.translation_x = 0;
-                actor.scale_x = originalScaleX;
-                actor.scale_y = originalScaleY;
-                this._bounceAnimations.delete(actor);
-                return;
-            }
+    let current = 0;
+    const baseHeight = 28;
+    const duration = 130;
 
-            // Rebote hacia arriba
-            actor.ease({
-                translation_y: -30 * intensity,
-                duration: bounceDuration,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onComplete: () => {
-                    // Caída
-                    actor.ease({
-                        translation_y: 0,
-                        duration: bounceDuration,
-                        mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                        onComplete: () => {
-                            currentBounce++;
-                            if (currentBounce < bounces) {
-                                // Reducir intensidad en cada rebote
-                                intensity *= 0.6;
-                                setTimeout(() => doBounce(), 50);
-                            } else {
-                                // Asegurar posición final de forma forzada
-                                actor.remove_all_transitions();
-                                actor.translation_y = 0;
-                                actor.translation_x = 0;
-                                actor.scale_x = originalScaleX;
-                                actor.scale_y = originalScaleY;
-                                this._bounceAnimations.delete(actor);
-                            }
-                        }
-                    });
-                }
-            });
-        };
+    const original = {
+      sx: actor.scale_x,
+      sy: actor.scale_y,
+      tx: actor.translation_x,
+      ty: actor.translation_y,
+    };
 
-        this._bounceAnimations.set(actor, { bouncing: true, originalIntensity });
+    const scheduleNext = () => {
+      current++;
+      intensity *= 0.65;
+      GLib.timeout_add(GLib.PRIORITY_DEFAULT, 40, () => {
         doBounce();
-    }
-    
-    /**
-     * Rebote continuo hasta que la app abra una ventana
-     */
-    bounceContinuous(actor, app, intensity = 0.4) {
-        if (!actor || !app) return;
-        
-        // Si ya está rebotando continuamente, no hacer nada
-        if (this._continuousBounces.has(actor)) return;
-        
-        // Verificar si la app ya tiene ventanas
-        if (app.get_n_windows() > 0) return;
-        
-        // Guardar escala original
-        const originalScaleX = actor.scale_x;
-        const originalScaleY = actor.scale_y;
-        
-        const bounceDuration = 200;
-        let isBouncing = true;
-        
-        const doBounce = () => {
-            if (!isBouncing) {
-                actor.remove_all_transitions();
-                actor.translation_y = 0;
-                actor.translation_x = 0;
-                actor.scale_x = originalScaleX;
-                actor.scale_y = originalScaleY;
-                this._continuousBounces.delete(actor);
-                return;
-            }
-            
-            // Rebote hacia arriba
-            actor.ease({
-                translation_y: -35 * intensity,
-                duration: bounceDuration,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onComplete: () => {
-                    if (!isBouncing) return;
-                    // Caída
-                    actor.ease({
-                        translation_y: 0,
-                        duration: bounceDuration,
-                        mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                        onComplete: () => {
-                            if (isBouncing) {
-                                setTimeout(() => doBounce(), 100);
-                            }
-                        }
-                    });
-                }
-            });
-        };
-        
-        // Usar un intervalo para verificar si se abrió una ventana
-        const checkInterval = setInterval(() => {
-            if (app.get_n_windows() > 0) {
-                // La app abrió una ventana, detener rebote
-                isBouncing = false;
-                clearInterval(checkInterval);
-                actor.remove_all_transitions();
-                actor.translation_y = 0;
-                actor.translation_x = 0;
-                actor.scale_x = originalScaleX;
-                actor.scale_y = originalScaleY;
-                this._continuousBounces.delete(actor);
-            }
-        }, 100);
-        
-        this._continuousBounces.set(actor, { 
-            isBouncing: true, 
-            checkInterval, 
-            originalScaleX, 
-            originalScaleY 
-        });
-        
-        doBounce();
-    }
-    
-    /**
-     * Detener rebote continuo manualmente
-     */
-    stopContinuousBounce(actor) {
-        const bounceData = this._continuousBounces.get(actor);
-        if (bounceData) {
-            if (bounceData.checkInterval) {
-                clearInterval(bounceData.checkInterval);
-            }
-            actor.remove_all_transitions();
-            actor.translation_y = 0;
-            actor.translation_x = 0;
-            actor.scale_x = bounceData.originalScaleX || 1.0;
-            actor.scale_y = bounceData.originalScaleY || 1.0;
-            this._continuousBounces.delete(actor);
-        }
-    }
+        return GLib.SOURCE_REMOVE;
+      });
+    };
 
-    /**
-     * Animación de entrada para nuevos iconos
-     */
-    iconEnter(actor) {
-        if (!actor) return;
+    const onBounceDown = () => {
+      actor.ease({
+        translation_y: 0,
+        duration,
+        mode: Clutter.AnimationMode.EASE_IN_QUAD,
+        onComplete: scheduleNext,
+      });
+    };
 
-        // Empezar invisible y pequeño
-        actor.opacity = 0;
-        actor.scale_x = 0.3;
-        actor.scale_y = 0.3;
-        actor.set_pivot_point(0.5, 0.5);
-
-        // Animar entrada
-        actor.ease({
-            opacity: 255,
-            scale_x: 1.0,
-            scale_y: 1.0,
-            duration: 250,
-            mode: Clutter.AnimationMode.EASE_OUT_BACK,
-        });
-    }
-
-    /**
-     * Animación de salida para iconos que se eliminan
-     */
-    iconExit(actor, onComplete) {
-        if (!actor) {
-            if (onComplete) onComplete();
-            return;
-        }
-
-        actor.ease({
-            opacity: 0,
-            scale_x: 0.3,
-            scale_y: 0.3,
-            duration: 200,
-            mode: Clutter.AnimationMode.EASE_IN_BACK,
-            onComplete: () => {
-                if (onComplete) onComplete();
-            }
-        });
-    }
-
-    /**
-     * Animación de pulso para indicar actividad
-     */
-    pulseIcon(actor, duration = 300) {
-        if (!actor) return;
-
-        actor.ease({
-            scale_x: 1.15,
-            scale_y: 1.15,
-            duration: duration / 2,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            onComplete: () => {
-                actor.ease({
-                    scale_x: 1.0,
-                    scale_y: 1.0,
-                    duration: duration / 2,
-                    mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                });
-            }
-        });
-    }
-
-    /**
-     * Animación de entrada del dock completo
-     */
-    dockEnter(container) {
-        if (!container) return;
-
-        container.translation_y = 100;
-        container.opacity = 0;
-
-        container.ease({
-            translation_y: 0,
-            opacity: 255,
-            duration: 300,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-        });
-    }
-
-    /**
-     * Detener todas las animaciones en un actor
-     */
-    stopAllAnimations(actor) {
-        if (!actor) return;
-
-        actor.remove_all_transitions();
-        actor.opacity = 255;
-        actor.scale_x = 1.0;
-        actor.scale_y = 1.0;
-        actor.translation_y = 0;
-        
+    const doBounce = () => {
+      if (current >= bounces) {
+        this._restoreActor(actor, original);
         this._bounceAnimations.delete(actor);
+        return GLib.SOURCE_REMOVE;
+      }
+
+      const height = baseHeight * intensity;
+      actor.ease({
+        translation_y: -height,
+        duration,
+        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        onComplete: onBounceDown,
+      });
+    };
+
+    this._bounceAnimations.set(actor, true);
+    doBounce();
+  }
+
+  /* ------------- rebote continuo hasta abrir ventana ------------- */
+
+  bounceContinuous(actor, app, intensity = 0.4) {
+    if (!actor || !app) return;
+    if (this._continuousBounces.has(actor)) return;
+
+    if (app.get_n_windows() > 0) return;
+
+    const original = {
+      sx: actor.scale_x,
+      sy: actor.scale_y,
+      tx: actor.translation_x,
+      ty: actor.translation_y,
+    };
+
+    const duration = 160;
+    const baseHeight = 30;
+    let active = true;
+
+    const scheduleNext = () => {
+      if (active) {
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 90, () => {
+          doBounce();
+          return GLib.SOURCE_REMOVE;
+        });
+      }
+    };
+
+    const onBounceDown = () => {
+      actor.ease({
+        translation_y: 0,
+        duration,
+        mode: Clutter.AnimationMode.EASE_IN_QUAD,
+        onComplete: scheduleNext,
+      });
+    };
+
+    const doBounce = () => {
+      if (!active) {
+        this._restoreActor(actor, original);
+        return GLib.SOURCE_REMOVE;
+      }
+
+      actor.ease({
+        translation_y: -baseHeight * intensity,
+        duration,
+        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        onComplete: onBounceDown,
+      });
+    };
+
+    // comprobador de ventanas abiertas
+    const checkId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+      if (app.get_n_windows() > 0) {
+        active = false;
+        this._restoreActor(actor, original);
+        this._continuousBounces.delete(actor);
+        return GLib.SOURCE_REMOVE;
+      }
+      return GLib.SOURCE_CONTINUE;
+    });
+
+    this._continuousBounces.set(actor, { active: true, checkId, original });
+    doBounce();
+  }
+
+  stopContinuousBounce(actor) {
+    const data = this._continuousBounces.get(actor);
+    if (!data) return;
+
+    if (data.checkId) GLib.source_remove(data.checkId);
+
+    this._restoreActor(actor, data.original);
+    this._continuousBounces.delete(actor);
+  }
+
+  /* ------------- utilidades internas ------------- */
+
+  _restoreActor(actor, original) {
+    if (!actor) return;
+    actor.remove_all_transitions();
+
+    actor.translation_x = original.tx ?? 0;
+    actor.translation_y = original.ty ?? 0;
+    actor.scale_x = original.sx ?? 1;
+    actor.scale_y = original.sy ?? 1;
+    actor.opacity = 255;
+  }
+
+  /* ------------- icon enter / exit / pulse ------------- */
+
+  iconEnter(actor) {
+    if (!actor) return;
+
+    actor.opacity = 0;
+    actor.scale_x = 0.3;
+    actor.scale_y = 0.3;
+    actor.set_pivot_point(0.5, 0.5);
+
+    actor.ease({
+      opacity: 255,
+      scale_x: 1,
+      scale_y: 1,
+      duration: 220,
+      mode: Clutter.AnimationMode.EASE_OUT_BACK,
+    });
+  }
+
+  iconExit(actor, onComplete) {
+    if (!actor) {
+      onComplete?.();
+      return;
     }
 
-    cleanup() {
-        this._bounceAnimations.clear();
-    }
+    actor.ease({
+      opacity: 0,
+      scale_x: 0.3,
+      scale_y: 0.3,
+      duration: 180,
+      mode: Clutter.AnimationMode.EASE_IN_BACK,
+      onComplete: () => onComplete?.(),
+    });
+  }
+
+  pulseIcon(actor, duration = 300) {
+    if (!actor) return;
+
+    actor.ease({
+      scale_x: 1.15,
+      scale_y: 1.15,
+      duration: duration / 2,
+      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+      onComplete: () => {
+        actor.ease({
+          scale_x: 1,
+          scale_y: 1,
+          duration: duration / 2,
+          mode: Clutter.AnimationMode.EASE_IN_QUAD,
+        });
+      },
+    });
+  }
+
+  dockEnter(container) {
+    if (!container) return;
+
+    container.translation_y = 80;
+    container.opacity = 0;
+
+    container.ease({
+      translation_y: 0,
+      opacity: 255,
+      duration: 260,
+      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+    });
+  }
+
+  /* ------------- limpieza ------------- */
+
+  stopAllAnimations(actor) {
+    if (!actor) return;
+
+    actor.remove_all_transitions();
+    actor.opacity = 255;
+    actor.scale_x = 1;
+    actor.scale_y = 1;
+    actor.translation_x = 0;
+    actor.translation_y = 0;
+
+    this._bounceAnimations.delete(actor);
+    this.stopContinuousBounce(actor);
+  }
+
+  cleanup() {
+    this._bounceAnimations.clear();
+
+    this._continuousBounces.forEach((data) => {
+      if (data.checkId) GLib.source_remove(data.checkId);
+    });
+
+    this._continuousBounces.clear();
+  }
 }
 
-/**
- * Gestor de notificaciones para rebotes
- * Detecta cuando una app necesita atención y hace rebotar su icono
- */
+/* ------------- NotificationBouncer corregido ------------- */
+
 export class NotificationBouncer {
-    constructor(appManager, animations) {
-        this._appManager = appManager;
-        this._animations = animations;
-        this._signalIds = [];
-        this._windowTracker = Shell.WindowTracker.get_default();
-    }
+  constructor(appManager, animations) {
+    this._appManager = appManager;
+    this._animations = animations;
+    this._signalIds = [];
+    this._windowTracker = Shell.WindowTracker.get_default();
+  }
 
-    enable() {
-        // Conectar señal para detectar ventanas que demandan atención
-        this._signalIds.push(
-            global.display.connect('window-demands-attention', (display, window) => {
-                this._onWindowDemandsAttention(window);
-            })
-        );
+  enable() {
+    this._signalIds.push(
+      globalThis.display.connect("window-demands-attention", (_, win) =>
+        this._onAttention(win)
+      )
+    );
+  }
 
-        // Detectar cuando una app se inicia
-        this._signalIds.push(
-            this._windowTracker.connect('tracked-windows-changed', () => {
-                // Implementar lógica de rebote para apps nuevas si es necesario
-            })
-        );
-    }
+  _onAttention(window) {
+    if (!window) return;
 
-    _onWindowDemandsAttention(window) {
-        if (!window) return;
+    const app = this._windowTracker.get_window_app(window);
+    if (!app) return;
 
-        // Obtener la app asociada a la ventana
-        const app = this._windowTracker.get_window_app(window);
-        if (!app) return;
+    const icon = this._appManager._appIcons.get(app.get_id());
+    if (!icon?.getActor) return;
 
-        // Buscar el icono de esta app en el dock
-        const iconData = this._appManager._appIcons.get(app.get_id());
-        if (iconData && iconData.getActor) {
-            const actor = iconData.getActor();
-            if (actor) {
-                // Hacer rebotar el icono
-                this._animations.bounceIcon(actor, 3, 0.5);
-            }
-        }
-    }
+    const actor = icon.getActor();
+    if (!actor) return;
 
-    disable() {
-        this._signalIds.forEach(id => {
-            try {
-                global.display.disconnect(id);
-            } catch (e) {
-                try {
-                    this._windowTracker.disconnect(id);
-                } catch (e2) {
-                    // Ignorar
-                }
-            }
-        });
-        this._signalIds = [];
-    }
+    this._animations.bounceIcon(actor, 4, 0.45);
+  }
+
+  disable() {
+    this._signalIds.forEach((id) => {
+      try {
+        globalThis.display.disconnect(id);
+      } catch (error) {
+        console.warn("Failed to disconnect signal:", error);
+      }
+    });
+
+    this._signalIds = [];
+  }
 }
