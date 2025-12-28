@@ -1,5 +1,3 @@
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
-import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DockContainer } from './dockContainer.js';
 import { AppManager } from './appManager.js';
@@ -27,23 +25,33 @@ class TuxDock {
 
     enable() {
         try {
+            console.log('[TuxDock] === INICIANDO EXTENSIÓN ===');
+            log('Habilitando TuxDock...');
+
             // Inicializar configuración
+            console.log('[TuxDock] Creando settings...');
             this._settings = new DockSettings(this._extensionObject);
 
             // Crear contenedor del dock
+            console.log('[TuxDock] Creando contenedor...');
             this._dockContainer = new DockContainer(this._settings);
             const container = this._dockContainer.build();
+            console.log('[TuxDock] Contenedor creado:', container !== null);
 
             // Crear gestor de aplicaciones
-            this._appManager = new AppManager(this._dockContainer, this._settings);
+            console.log('[TuxDock] Creando app manager...');
+            this._appManager = new AppManager(this._dockContainer);
             this._appManager.enable();
+            console.log('[TuxDock] App manager habilitado');
 
             // Inicializar autohide
+            console.log('[TuxDock] Inicializando autohide...');
             this._autohideManager = new AutohideManager(this._dockContainer, this._settings);
             this._autohideManager.enable();
 
             // Inicializar minimizar al icono
-            this._minimizeManager = new MinimizeToIcon(this._dockContainer, this._appManager, this._settings);
+            console.log('[TuxDock] Inicializando minimizar al icono...');
+            this._minimizeManager = new MinimizeToIcon(this._dockContainer, this._appManager);
             this._minimizeManager.enable();
 
             // Conectar al cambio de tamaño del monitor
@@ -51,19 +59,23 @@ class TuxDock {
                 this._dockContainer.updatePosition();
             });
 
-            log('TuxDock habilitado correctamente');
+            // Ocultar el dash de GNOME en overview
+            this._hideDash();
 
             // Escuchar cambios en la configuración
             this._connectSettings();
-
+            
             // Actualizar posición inicial después de un delay para asegurar que todo está renderizado
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            setTimeout(() => {
                 if (this._dockContainer) {
                     this._dockContainer.updatePosition();
                 }
-                return GLib.SOURCE_REMOVE;
-            });
+            }, 500);
+
+            console.log('[TuxDock] === EXTENSIÓN HABILITADA ===');
+            log('TuxDock habilitado correctamente');
         } catch (e) {
+            console.error('[TuxDock] ERROR EN ENABLE:', e);
             logError('Error al habilitar TuxDock', e);
         }
     }
@@ -121,7 +133,7 @@ class TuxDock {
                             appIcon._iconSize = newSize;
                         }
                     });
-
+                    
                     // Actualizar iconos especiales
                     if (this._appManager._appLauncher && this._appManager._appLauncher._icon) {
                         this._appManager._appLauncher._icon.set_icon_size(newSize);
@@ -129,7 +141,7 @@ class TuxDock {
                     if (this._appManager._trashIcon && this._appManager._trashIcon._icon) {
                         this._appManager._trashIcon._icon.set_icon_size(newSize);
                     }
-
+                    
                     this._dockContainer.updatePosition();
                 }
             })
@@ -141,9 +153,6 @@ class TuxDock {
                 log('Posición cambiada, actualizando...');
                 if (this._dockContainer) {
                     this._dockContainer.updatePosition();
-                }
-                if (this._appManager) {
-                    this._appManager.forceRebuild();
                 }
             })
         );
@@ -208,7 +217,7 @@ class TuxDock {
                 this._appManager.refresh();
             })
         );
-
+        
         // Escuchar cambios en separador
         this._settingsChangedIds.push(
             settings.connect('changed::show-separator', () => {
@@ -217,7 +226,7 @@ class TuxDock {
             })
         );
     }
-
+    
     _hideDash() {
         // Ocultar el dash de GNOME cuando está en overview
         const dash = Main.overview.dash;
@@ -226,7 +235,7 @@ class TuxDock {
             dash.hide();
         }
     }
-
+    
     _restoreDash() {
         // Restaurar el dash de GNOME
         const dash = Main.overview.dash;
@@ -283,7 +292,7 @@ class TuxDock {
                 this._dockContainer.destroy();
                 this._dockContainer = null;
             }
-
+            
             // Restaurar el dash de GNOME
             this._restoreDash();
 
@@ -299,7 +308,12 @@ class TuxDock {
 /**
  * Clase de extensión exportada para GNOME Shell
  */
-export default class TuxDockExtension extends Extension {
+export default class TuxDockExtension {
+    constructor(metadata) {
+        this._metadata = metadata;
+        this._dock = null;
+    }
+
     enable() {
         this._dock = new TuxDock(this);
         this._dock.enable();
