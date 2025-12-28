@@ -1,0 +1,45 @@
+/* Tux Dock Styles */
+
+.tux-dock-container {
+    spacing: 2px;
+}
+
+.tux-dock-app-button {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 8px;
+    margin: 4px;
+    transition-duration: 200ms;
+}
+
+.tux-dock-app-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.tux-dock-app-button:checked {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
+.tux-dock-app-button:focus {
+    background-color: rgba(255, 255, 255, 0.2);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4);
+}
+
+.tux-dock-tooltip {
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-weight: bold;
+    font-size: 14px;
+    text-align: center;
+}
+
+.tux-dock-badge {
+    background-color: #e74c3c;
+    color: white;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-weight: bold;
+    font-size: 10px;
+}

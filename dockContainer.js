@@ -31,7 +31,7 @@ export class DockContainer {
     this._applyStyle();
 
     Main.layoutManager.addChrome(this._container, {
-      affectsStruts: false,
+      affectsStruts: this._settings.getPushWindows(),
       trackFullscreen: true,
     });
 

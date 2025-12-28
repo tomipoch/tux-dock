@@ -1,4 +1,5 @@
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DockContainer } from './dockContainer.js';
 import { AppManager } from './appManager.js';
 import { DockSettings } from './settings.js';
@@ -30,7 +31,8 @@ class TuxDock {
 
             // Inicializar configuración
             console.log('[TuxDock] Creando settings...');
-            this._settings = new DockSettings(this._extensionObject);
+            const settings = this._extensionObject.getSettings();
+            this._settings = new DockSettings(settings);
 
             // Crear contenedor del dock
             console.log('[TuxDock] Creando contenedor...');
@@ -51,7 +53,7 @@ class TuxDock {
 
             // Inicializar minimizar al icono
             console.log('[TuxDock] Inicializando minimizar al icono...');
-            this._minimizeManager = new MinimizeToIcon(this._dockContainer, this._appManager);
+            this._minimizeManager = new MinimizeToIcon(this._dockContainer, this._appManager, this._settings);
             this._minimizeManager.enable();
 
             // Conectar al cambio de tamaño del monitor
@@ -64,7 +66,7 @@ class TuxDock {
 
             // Escuchar cambios en la configuración
             this._connectSettings();
-            
+
             // Actualizar posición inicial después de un delay para asegurar que todo está renderizado
             setTimeout(() => {
                 if (this._dockContainer) {
@@ -82,6 +84,8 @@ class TuxDock {
 
     _connectSettings() {
         const settings = this._settings.getSettings();
+        log('[TuxDock] === CONECTANDO SETTINGS ===');
+        log(`[TuxDock] Settings object: ${settings ? 'OK' : 'NULL'}`);
 
         // Escuchar cambios en autohide
         this._settingsChangedIds.push(
@@ -106,6 +110,8 @@ class TuxDock {
         // Escuchar cambios en magnificación
         this._settingsChangedIds.push(
             settings.connect('changed::magnification-enabled', () => {
+                const enabled = this._settings.getMagnificationEnabled();
+                log(`[TuxDock] *** MAGNIFICACIÓN CAMBIADA A: ${enabled} ***`);
                 if (this._dockContainer) {
                     this._dockContainer.updateMagnification();
                 }
@@ -123,6 +129,8 @@ class TuxDock {
         // Escuchar cambios en tamaño de iconos - actualización instantánea
         this._settingsChangedIds.push(
             settings.connect('changed::icon-size', () => {
+                const newSize = this._settings.getIconSize();
+                log(`[TuxDock] *** TAMAÑO CAMBIADO A: ${newSize} ***`);
                 log('Tamaño de iconos cambiado, aplicando...');
                 if (this._dockContainer && this._appManager) {
                     // Actualizar el tamaño en cada icono existente
@@ -133,7 +141,7 @@ class TuxDock {
                             appIcon._iconSize = newSize;
                         }
                     });
-                    
+
                     // Actualizar iconos especiales
                     if (this._appManager._appLauncher && this._appManager._appLauncher._icon) {
                         this._appManager._appLauncher._icon.set_icon_size(newSize);
@@ -141,7 +149,7 @@ class TuxDock {
                     if (this._appManager._trashIcon && this._appManager._trashIcon._icon) {
                         this._appManager._trashIcon._icon.set_icon_size(newSize);
                     }
-                    
+
                     this._dockContainer.updatePosition();
                 }
             })
@@ -181,11 +189,7 @@ class TuxDock {
             settings.connect('changed::minimize-to-dock', () => {
                 const enabled = this._settings.getMinimizeToDock();
                 if (this._minimizeManager) {
-                    if (enabled) {
-                        this._minimizeManager.enable();
-                    } else {
-                        this._minimizeManager.disable();
-                    }
+                    this._minimizeManager.setEnabled(enabled);
                 }
             })
         );
@@ -217,7 +221,7 @@ class TuxDock {
                 this._appManager.refresh();
             })
         );
-        
+
         // Escuchar cambios en separador
         this._settingsChangedIds.push(
             settings.connect('changed::show-separator', () => {
@@ -225,8 +229,43 @@ class TuxDock {
                 this._appManager.forceRebuild();
             })
         );
+
+        // Escuchar cambios en push-windows (reservar espacio)
+        this._settingsChangedIds.push(
+            settings.connect('changed::push-windows', () => {
+                const enabled = this._settings.getPushWindows();
+                log(`Push windows ${enabled ? 'enabled' : 'disabled'}`);
+                // Actualizar la configuración de chrome
+                if (this._dockContainer) {
+                    const container = this._dockContainer.getContainer();
+                    if (container) {
+                        Main.layoutManager.removeChrome(container);
+                        Main.layoutManager.addChrome(container, {
+                            affectsStruts: enabled,
+                            trackFullscreen: true,
+                        });
+                        this._dockContainer.updatePosition();
+                    }
+                }
+            })
+        );
+
+        // Escuchar cambios en enable-bounce (animación de rebote)
+        this._settingsChangedIds.push(
+            settings.connect('changed::enable-bounce', () => {
+                const enabled = this._settings.getEnableBounce();
+                log(`Bounce animation ${enabled ? 'enabled' : 'disabled'}`);
+                if (this._appManager._notificationBouncer) {
+                    if (enabled) {
+                        this._appManager._notificationBouncer.enable();
+                    } else {
+                        this._appManager._notificationBouncer.disable();
+                    }
+                }
+            })
+        );
     }
-    
+
     _hideDash() {
         // Ocultar el dash de GNOME cuando está en overview
         const dash = Main.overview.dash;
@@ -235,7 +274,7 @@ class TuxDock {
             dash.hide();
         }
     }
-    
+
     _restoreDash() {
         // Restaurar el dash de GNOME
         const dash = Main.overview.dash;
@@ -292,7 +331,7 @@ class TuxDock {
                 this._dockContainer.destroy();
                 this._dockContainer = null;
             }
-            
+
             // Restaurar el dash de GNOME
             this._restoreDash();
 
@@ -308,8 +347,9 @@ class TuxDock {
 /**
  * Clase de extensión exportada para GNOME Shell
  */
-export default class TuxDockExtension {
+export default class TuxDockExtension extends Extension {
     constructor(metadata) {
+        super(metadata);
         this._metadata = metadata;
         this._dock = null;
     }

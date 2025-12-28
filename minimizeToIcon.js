@@ -118,6 +118,7 @@ export class MinimizeToIcon {
     this._settings = settings; // Use passed settings instead of creating new instance
     this._signalIds = [];
     this._timeouts = [];
+    this._activeClones = new Set();
   }
 
   enable() {
@@ -131,6 +132,14 @@ export class MinimizeToIcon {
         this._onUnminimize(actor);
       })
     );
+  }
+
+  setEnabled(enabled) {
+    if (enabled) {
+      this.enable();
+    } else {
+      this.disable();
+    }
   }
 
   /* ---------------- minimize ---------------- */
@@ -192,8 +201,12 @@ export class MinimizeToIcon {
         opacity: 0,
         duration: 250,
         mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
-        onComplete: () => clone.destroy(),
+        onComplete: () => {
+          clone.destroy();
+          this._activeClones.delete(clone);
+        },
       });
+      this._activeClones.add(clone);
 
       return;
     }
@@ -212,6 +225,7 @@ export class MinimizeToIcon {
 
     /* asegurar mappeo antes del efecto */
     clone.connect("map", () => clone.add_effect(effect));
+    this._activeClones.add(clone);
 
     if (direction === DockDirection.BOTTOM) clone.set_pivot_point(0.5, 1);
     else if (direction === DockDirection.TOP) clone.set_pivot_point(0.5, 0);
@@ -243,6 +257,7 @@ export class MinimizeToIcon {
 
       if (t >= 1) {
         clone.destroy();
+        this._activeClones.delete(clone);
         return GLib.SOURCE_REMOVE;
       }
 
@@ -264,6 +279,9 @@ export class MinimizeToIcon {
 
     const iconActor = iconData.getActor();
     if (!iconActor) return;
+
+    /* Force update position to ensure correct origin */
+    if (this._dockContainer) this._dockContainer.updatePosition();
 
     const animationType = this._settings.getMinimizeAnimation();
     if (animationType === "none") return;
@@ -305,9 +323,11 @@ export class MinimizeToIcon {
           actor.opacity = 255;
           actor.show();
           clone.destroy();
+          this._activeClones.delete(clone);
           delete window._originalPosition;
         },
       });
+      this._activeClones.add(clone);
 
       return;
     }
@@ -324,6 +344,7 @@ export class MinimizeToIcon {
     effect.setProgress(1);
 
     clone.connect("map", () => clone.add_effect(effect));
+    this._activeClones.add(clone);
 
     const durationMs = 300;
     const start = GLib.get_monotonic_time();
@@ -348,11 +369,10 @@ export class MinimizeToIcon {
       effect.setProgress(p);
       clone.opacity = 255 * k;
 
+
+
       if (t >= 1) {
-        actor.opacity = 255;
-        actor.show();
-        clone.destroy();
-        delete window._originalPosition;
+        this._finishUnminimize(actor, clone, window);
         return GLib.SOURCE_REMOVE;
       }
 
@@ -360,6 +380,14 @@ export class MinimizeToIcon {
     });
 
     this._timeouts.push(id);
+  }
+
+  _finishUnminimize(actor, clone, window) {
+    actor.opacity = 255;
+    actor.show();
+    clone.destroy();
+    this._activeClones.delete(clone);
+    if (window._originalPosition) delete window._originalPosition;
   }
 
   disable() {
@@ -375,5 +403,13 @@ export class MinimizeToIcon {
 
     this._timeouts.forEach((id) => GLib.source_remove(id));
     this._timeouts = [];
+
+    // Destroy lingering clones
+    this._activeClones.forEach(clone => {
+      try {
+        clone.destroy();
+      } catch (e) { }
+    });
+    this._activeClones.clear();
   }
 }

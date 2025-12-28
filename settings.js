@@ -6,14 +6,29 @@ import { logError } from './utils.js';
  * Gestión de configuración del dock usando GSettings
  */
 export class DockSettings {
-    constructor(extensionObject = null) {
+    constructor(settingsOrExtension = null) {
         try {
-            if (extensionObject && typeof extensionObject.getSettings === 'function') {
-                this._settings = extensionObject.getSettings();
+            if (settingsOrExtension && settingsOrExtension.toString().includes('Gio.Settings')) {
+                // Se pasó un objeto Gio.Settings directamente
+                this._settings = settingsOrExtension;
+            } else if (settingsOrExtension && typeof settingsOrExtension.getSettings === 'function') {
+                this._settings = settingsOrExtension.getSettings();
             } else {
-                // Fallback manual si no hay extensionObject (no recomendado en GNOME 45+)
+                // Intentar cargar esquema manualmente desde el directorio local
                 const schemaId = 'org.gnome.shell.extensions.tux-dock';
-                this._settings = new Gio.Settings({ schema_id: schemaId });
+                const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
+                    GLib.build_filenamev([import.meta.url.replace('file://', '').replace('/settings.js', ''), 'schemas']),
+                    Gio.SettingsSchemaSource.get_default(),
+                    false
+                );
+
+                const schema = schemaSource.lookup(schemaId, true);
+                if (schema) {
+                    this._settings = new Gio.Settings({ settings_schema: schema });
+                } else {
+                    // Fallback a global si no se encuentra local
+                    this._settings = new Gio.Settings({ schema_id: schemaId });
+                }
             }
         } catch (e) {
             logError('Error initializing settings', e);

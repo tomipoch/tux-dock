@@ -57,8 +57,7 @@ export class AppIcon {
       track_hover: true,
     });
 
-    // Apply initial rounded background style
-    this._applyButtonStyle(false);
+    // Style is handled by stylesheet.css now
 
     /* icono */
     this._icon = new St.Icon({
@@ -73,6 +72,8 @@ export class AppIcon {
       style_class: "tux-dock-badge",
     });
 
+    // Badge style moved to CSS
+    /*
     this._badge.set_style(`
             background-color: #e74c3c;
             color: white;
@@ -80,6 +81,7 @@ export class AppIcon {
             padding: 2px 6px;
             font-weight: bold;
         `);
+    */
 
     const badgeBin = new St.Bin({
       y_align: Clutter.ActorAlign.START,
@@ -114,16 +116,7 @@ export class AppIcon {
 
   /* ---------------- styling ---------------- */
 
-  _applyButtonStyle(isHovered) {
-    const bgColor = isHovered ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
-    this._button.set_style(`
-      background-color: ${bgColor};
-      border-radius: 12px;
-      padding: 8px;
-      margin: 4px;
-      transition-duration: 200ms;
-    `);
-  }
+
 
   /* ---------------- estado visual ---------------- */
 
@@ -176,11 +169,9 @@ export class AppIcon {
     this._signalIds.push(
       this._button.connect("notify::hover", (btn) => {
         if (btn.hover) {
-          this._applyButtonStyle(true);
           this._scheduleTooltip();
           this._schedulePreview();
         } else {
-          this._applyButtonStyle(false);
           this._hideTooltip();
           this._cancelPreview();
         }

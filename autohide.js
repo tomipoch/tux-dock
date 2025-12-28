@@ -21,6 +21,16 @@ export class AutohideManager {
     this._hideDelay = 300; // ms antes de ocultar
     this._showDelay = 100; // ms antes de mostrar
     this._edgeDistance = 5; // píxeles desde el borde para mostrar
+
+    // Intellihide
+    this._windowTracker = global.window_manager.get_window_tracker ? global.window_manager.get_window_tracker() : null;
+    if (!this._windowTracker) {
+      // Fallback for newer GS versions if needed
+      const Shell = imports.gi.Shell;
+      this._windowTracker = Shell.WindowTracker.get_default();
+    }
+
+    this._windowSignals = [];
   }
 
   enable() {
@@ -40,6 +50,8 @@ export class AutohideManager {
 
     // Iniciar oculto
     this._hide(false);
+
+    this._toggleIntellihideSignals(this._settings.getIntellihide());
   }
 
   _checkMousePosition() {
@@ -57,6 +69,10 @@ export class AutohideManager {
       this._mouseX <= containerX + containerWidth + 50 &&
       this._mouseY >= containerY - 50 &&
       this._mouseY <= containerY + containerHeight + 50;
+
+    // Check overlap for Intellihide
+    const intellihide = this._settings.getIntellihide();
+    const hasOverlap = intellihide ? this._checkOverlap(container) : false;
 
     // Verificar si está en el borde correspondiente según la posición del dock
     const position = this._settings.getPosition();
@@ -81,6 +97,85 @@ export class AutohideManager {
       this._scheduleShow();
     } else {
       this._scheduleHide();
+    }
+    if (isNearDock || isAtEdge) {
+      this._scheduleShow();
+    } else {
+      if (this._settings.getAutohide() || (intellihide && hasOverlap)) {
+        this._scheduleHide();
+      } else {
+        this._scheduleShow();
+      }
+    }
+  }
+
+  _checkOverlap(container) {
+    if (!container) return false;
+
+    const monitor = Main.layoutManager.primaryMonitor;
+    const workspace = JSON.stringify(global.workspace_manager.get_active_workspace_index()); // Trick to get current workspace index roughly
+    // Better way:
+    const activeWorkspace = global.workspace_manager.get_active_workspace();
+
+    const windows = global.display.get_tab_list(0, activeWorkspace); // 0 = non-minimized, standard logic
+
+    const [cx, cy] = container.get_transformed_position();
+    const cw = container.width;
+    const ch = container.height;
+
+    // Simple intersection check
+    for (let win of windows) {
+      if (!win.appears_focused && !win.get_maximized() && win.get_window_type() !== 0) continue; // Check normal windows
+
+      const rect = win.get_frame_rect();
+
+      // Check intersection
+      if (cx < rect.x + rect.width &&
+        cx + cw > rect.x &&
+        cy < rect.y + rect.height &&
+        cy + ch > rect.y) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  _toggleIntellihideSignals(enabled) {
+    if (enabled) {
+      if (this._windowSignals.length > 0) return;
+
+      // Helper to connect global signals safely
+      const connectSignal = (obj, sig, callback) => {
+        try {
+          return obj.connect(sig, callback);
+        } catch (e) { return 0; }
+      };
+
+      this._windowSignals.push({
+        obj: global.window_manager,
+        id: connectSignal(global.window_manager, 'map', () => this._checkMousePosition())
+      });
+      this._windowSignals.push({
+        obj: global.window_manager,
+        id: connectSignal(global.window_manager, 'minimize', () => this._checkMousePosition())
+      });
+      this._windowSignals.push({
+        obj: global.window_manager,
+        id: connectSignal(global.window_manager, 'unminimize', () => this._checkMousePosition())
+      });
+      this._windowSignals.push({
+        obj: global.window_manager,
+        id: connectSignal(global.window_manager, 'size-change', () => this._checkMousePosition())
+      });
+      this._windowSignals.push({
+        obj: global.display,
+        id: connectSignal(global.display, 'notify::focus-window', () => this._checkMousePosition())
+      });
+    } else {
+      this._windowSignals.forEach(s => {
+        if (s.id > 0) s.obj.disconnect(s.id);
+      });
+      this._windowSignals = [];
     }
   }
 
@@ -199,13 +294,13 @@ export class AutohideManager {
   }
 
   setIntellihide(enabled) {
-    // Por ahora, intellihide funciona similar a autohide
-    // En el futuro se puede implementar lógica específica para
-    // detectar ventanas superpuestas
-    this.setAutohide(enabled);
+    this._toggleIntellihideSignals(enabled);
+    this._checkMousePosition();
   }
 
   disable() {
+    this._toggleIntellihideSignals(false);
+
     // Limpiar timeouts
     if (this._hideTimeoutId) {
       GLib.source_remove(this._hideTimeoutId);
