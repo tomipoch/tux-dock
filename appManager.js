@@ -32,13 +32,13 @@ export class AppManager {
 
     enable() {
         console.log('[TuxDock] AppManager.enable() iniciando...');
-        
+
         // Habilitar drag & drop en el contenedor del dock
         const container = this._dockContainer.getContainer();
         if (container) {
             this._dragDropHandler.setupDropTarget(container, this);
         }
-        
+
         // Conectar señales para detectar cambios
         this._signalIds.push(
             this._appSystem.connect('installed-changed', () => this._scheduleRefresh())
@@ -63,7 +63,7 @@ export class AppManager {
 
         // Cargar apps iniciales
         this.refresh();
-        
+
         console.log('[TuxDock] AppManager.enable() completado');
     }
 
@@ -98,7 +98,7 @@ export class AppManager {
             favoriteIds.add(id);
             appsOrder.push(id);
         });
-        
+
         // Guardar índice donde terminan las favoritas
         this._favoritesCount = favorites.length;
 
@@ -136,7 +136,7 @@ export class AppManager {
         if (this._settings.getShowAppLauncher()) {
             this._addAppLauncher();
         }
-        
+
         let addedCount = 0;
 
         // Crear iconos en orden
@@ -144,12 +144,12 @@ export class AppManager {
             const app = appsMap.get(appId);
             if (app) {
                 // Añadir separador después de las favoritas
-                if (addedCount === this._favoritesCount && 
-                    addedCount > 0 && 
+                if (addedCount === this._favoritesCount &&
+                    addedCount > 0 &&
                     appsOrder.length > this._favoritesCount) {
                     this._addSeparator();
                 }
-                
+
                 this._addAppIcon(app);
                 addedCount++;
             }
@@ -202,7 +202,7 @@ export class AppManager {
         const iconSize = this._settings.getIconSize();
         const appIcon = new AppIcon(app, this._windowTracker, iconSize);
         const iconActor = appIcon.build();
-        
+
         this._dockContainer.addIcon(iconActor);
         this._appIcons.set(app.get_id(), appIcon);
     }
@@ -225,13 +225,13 @@ export class AppManager {
         // Crear separador visual
         const position = this._settings.getPosition();
         const isHorizontal = position === 'BOTTOM';
-        
+
         this._separator = new St.Widget({
             style_class: 'tux-dock-separator',
             x_expand: !isHorizontal,
             y_expand: isHorizontal,
         });
-        
+
         if (isHorizontal) {
             // Dock horizontal: línea vertical
             this._separator.set_style(`
@@ -249,7 +249,7 @@ export class AppManager {
                 max-height: 1px;
             `);
         }
-        
+
         this._dockContainer.addIcon(this._separator);
     }
 
@@ -262,17 +262,17 @@ export class AppManager {
     _destroyAllIcons() {
         this._appIcons.forEach(icon => icon.destroy());
         this._appIcons.clear();
-        
+
         if (this._appLauncher) {
             this._appLauncher.destroy();
             this._appLauncher = null;
         }
-        
+
         if (this._trashIcon) {
             this._trashIcon.destroy();
             this._trashIcon = null;
         }
-        
+
         if (this._separator) {
             this._separator.destroy();
             this._separator = null;
@@ -321,7 +321,7 @@ export class AppManager {
 
         // Destruir iconos
         this._destroyAllIcons();
-        
+
         // Destruir stacks
         this._stackIcons.forEach(stack => stack.destroy());
         this._stackIcons.clear();
@@ -334,10 +334,10 @@ export class AppManager {
         if (this._stackIcons.has(stackPath)) {
             return; // Ya existe
         }
-        
+
         const stackIcon = new StackIcon(stackPath, stackName);
         this._stackIcons.set(stackPath, stackIcon);
-        
+
         // Añadir al contenedor
         const container = this._dockContainer.getIconsContainer();
         if (container) {

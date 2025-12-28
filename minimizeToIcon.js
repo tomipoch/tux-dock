@@ -292,13 +292,16 @@ export class MinimizeToIcon {
     const iconCenterY = iconY + iconH / 2;
 
     const orig = window._originalPosition || window.get_frame_rect();
+    // Calculate destination center
+    const destCenterX = orig.x + orig.width / 2;
+    const destCenterY = orig.y + orig.height / 2;
 
     window.move_frame(true, orig.x, orig.y);
 
     const clone = new Clutter.Clone({
       source: actor,
-      x: iconCenterX,
-      y: iconCenterY,
+      x: iconCenterX - orig.width / 2, // Start centered on icon
+      y: iconCenterY - orig.height / 2,
       width: orig.width,
       height: orig.height,
       scale_x: 0.6,
@@ -311,6 +314,7 @@ export class MinimizeToIcon {
     actor.opacity = 0;
 
     if (animationType === "scale") {
+      clone.set_pivot_point(0.5, 0.5);
       clone.ease({
         x: orig.x,
         y: orig.y,
@@ -346,6 +350,12 @@ export class MinimizeToIcon {
     clone.connect("map", () => clone.add_effect(effect));
     this._activeClones.add(clone);
 
+    // Set pivot point matching direction for correct expansion
+    if (direction === DockDirection.BOTTOM) clone.set_pivot_point(0.5, 1);
+    else if (direction === DockDirection.TOP) clone.set_pivot_point(0.5, 0);
+    else if (direction === DockDirection.LEFT) clone.set_pivot_point(0, 0.5);
+    else if (direction === DockDirection.RIGHT) clone.set_pivot_point(1, 0.5);
+
     const durationMs = 300;
     const start = GLib.get_monotonic_time();
     const end = start + durationMs * 1000;
@@ -358,18 +368,18 @@ export class MinimizeToIcon {
       const k = t * t * (3 - 2 * t);
       const p = 1 - k;
 
-      const curX = iconCenterX + (orig.x - iconCenterX) * k;
-      const curY = iconCenterY + (orig.y - iconCenterY) * k;
+      // Interpolate CENTERS
+      const curCenterX = iconCenterX + (destCenterX - iconCenterX) * k;
+      const curCenterY = iconCenterY + (destCenterY - iconCenterY) * k;
 
-      clone.set_position(curX, curY);
+      // Set position based on center (Top-Left = Center - HalfSize)
+      clone.set_position(curCenterX - orig.width / 2, curCenterY - orig.height / 2);
 
       const s = 0.6 + 0.4 * k;
       clone.set_scale(s, s);
 
       effect.setProgress(p);
       clone.opacity = 255 * k;
-
-
 
       if (t >= 1) {
         this._finishUnminimize(actor, clone, window);

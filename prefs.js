@@ -36,7 +36,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
                 lower: 32,
                 upper: 96,
                 step_increment: 4,
-                value: settings.get_int('icon-size'),
             }),
             draw_value: true,
             value_pos: Gtk.PositionType.RIGHT,
@@ -57,7 +56,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const magnificationSwitch = new Gtk.Switch({
-            active: settings.get_boolean('magnification-enabled'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -85,7 +83,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
                 lower: 1.0,
                 upper: 3.0,
                 step_increment: 0.1,
-                value: settings.get_double('magnification-scale'),
             }),
             draw_value: true,
             value_pos: Gtk.PositionType.RIGHT,
@@ -173,7 +170,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
                 lower: 0,
                 upper: 50,
                 step_increment: 2,
-                value: settings.get_int('dock-margin'),
             }),
             valign: Gtk.Align.CENTER,
         });
@@ -204,7 +200,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const autohideSwitch = new Gtk.Switch({
-            active: settings.get_boolean('autohide'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -221,7 +216,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const indicatorsSwitch = new Gtk.Switch({
-            active: settings.get_boolean('show-running-indicator'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -238,7 +232,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const intellihideSwitch = new Gtk.Switch({
-            active: settings.get_boolean('intellihide'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -255,7 +248,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const pushWindowsSwitch = new Gtk.Switch({
-            active: settings.get_boolean('push-windows'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -272,7 +264,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const minimizeToDockSwitch = new Gtk.Switch({
-            active: settings.get_boolean('minimize-to-dock'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -378,7 +369,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const showTrashSwitch = new Gtk.Switch({
-            active: settings.get_boolean('show-trash'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -395,7 +385,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const showAppLauncherSwitch = new Gtk.Switch({
-            active: settings.get_boolean('show-app-launcher'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -420,7 +409,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         });
 
         const bounceSwitch = new Gtk.Switch({
-            active: settings.get_boolean('enable-bounce'),
             valign: Gtk.Align.CENTER,
         });
 
@@ -464,7 +452,6 @@ export default class TuxDockPreferences extends ExtensionPreferences {
                 lower: 0,
                 upper: 1000,
                 step_increment: 50,
-                value: settings.get_int('animation-duration'),
             }),
             valign: Gtk.Align.CENTER,
         });

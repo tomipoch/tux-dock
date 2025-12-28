@@ -70,7 +70,7 @@ export class DockContainer {
     this._container.set_style_class_name("tux-dock-container");
 
     // Reduced spacing since icons have margins
-    this._container.spacing = 2;
+    this._container.spacing = 0;
   }
 
   /* ---------------- posicionamiento ---------------- */
@@ -143,7 +143,11 @@ export class DockContainer {
       scale_y: 1,
       duration: 180,
       mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-      onComplete: () => this.updatePosition(),
+      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+      onComplete: () => {
+        this.updatePosition();
+        if (this._magnification) this._magnification.reset();
+      },
     });
 
     if (this._magnification) this._magnification.registerIcon(iconActor);
@@ -152,7 +156,10 @@ export class DockContainer {
   clearIcons() {
     if (!this._container) return;
 
-    if (this._magnification) this._magnification.clearIcons();
+    if (this._magnification) {
+      this._magnification.clearIcons();
+      this._magnification.reset();
+    }
 
     this._container.remove_all_children();
     this._icons = [];
