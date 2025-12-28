@@ -143,7 +143,6 @@ export class DockContainer {
       scale_y: 1,
       duration: 180,
       mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
       onComplete: () => {
         this.updatePosition();
         if (this._magnification) this._magnification.reset();
