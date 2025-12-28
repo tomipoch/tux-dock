@@ -1,4 +1,5 @@
 import Clutter from "gi://Clutter";
+import GLib from "gi://GLib";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
 /**
@@ -28,7 +29,7 @@ export class AutohideManager {
     }
 
     // Monitorear movimiento del mouse en toda la pantalla
-    this._motionEventId = globalThis.stage.connect(
+    this._motionEventId = global.stage.connect(
       "motion-event",
       (actor, event) => {
         [this._mouseX, this._mouseY] = event.get_coords();
@@ -57,11 +58,26 @@ export class AutohideManager {
       this._mouseY >= containerY - 50 &&
       this._mouseY <= containerY + containerHeight + 50;
 
-    // Verificar si está en el borde inferior
-    const isAtBottomEdge =
-      this._mouseY >= monitor.y + monitor.height - this._edgeDistance;
+    // Verificar si está en el borde correspondiente según la posición del dock
+    const position = this._settings.getPosition();
+    let isAtEdge = false;
 
-    if (isNearDock || isAtBottomEdge) {
+    switch (position) {
+      case 'BOTTOM':
+        isAtEdge = this._mouseY >= monitor.y + monitor.height - this._edgeDistance;
+        break;
+      case 'TOP':
+        isAtEdge = this._mouseY <= monitor.y + this._edgeDistance;
+        break;
+      case 'LEFT':
+        isAtEdge = this._mouseX <= monitor.x + this._edgeDistance;
+        break;
+      case 'RIGHT':
+        isAtEdge = this._mouseX >= monitor.x + monitor.width - this._edgeDistance;
+        break;
+    }
+
+    if (isNearDock || isAtEdge) {
       this._scheduleShow();
     } else {
       this._scheduleHide();
@@ -71,7 +87,7 @@ export class AutohideManager {
   _scheduleShow() {
     // Cancelar ocultamiento pendiente
     if (this._hideTimeoutId) {
-      clearTimeout(this._hideTimeoutId);
+      GLib.source_remove(this._hideTimeoutId);
       this._hideTimeoutId = null;
     }
 
@@ -80,17 +96,18 @@ export class AutohideManager {
 
     // Programar mostrar con delay
     if (!this._showTimeoutId) {
-      this._showTimeoutId = setTimeout(() => {
+      this._showTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this._showDelay, () => {
         this._show();
         this._showTimeoutId = null;
-      }, this._showDelay);
+        return GLib.SOURCE_REMOVE;
+      });
     }
   }
 
   _scheduleHide() {
     // Cancelar mostrar pendiente
     if (this._showTimeoutId) {
-      clearTimeout(this._showTimeoutId);
+      GLib.source_remove(this._showTimeoutId);
       this._showTimeoutId = null;
     }
 
@@ -99,10 +116,11 @@ export class AutohideManager {
 
     // Programar ocultar con delay
     if (!this._hideTimeoutId) {
-      this._hideTimeoutId = setTimeout(() => {
+      this._hideTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this._hideDelay, () => {
         this._hide(true);
         this._hideTimeoutId = null;
-      }, this._hideDelay);
+        return GLib.SOURCE_REMOVE;
+      });
     }
   }
 
@@ -112,8 +130,9 @@ export class AutohideManager {
 
     this._isHidden = false;
 
-    // Animar entrada
+    // Animar entrada - resetear ambas translaciones
     container.ease({
+      translation_x: 0,
       translation_y: 0,
       opacity: 255,
       duration: 250,
@@ -127,19 +146,39 @@ export class AutohideManager {
 
     this._isHidden = true;
 
-    const hideDistance = container.height + 30;
+    const position = this._settings.getPosition();
+    let hideX = 0;
+    let hideY = 0;
+
+    // Calcular distancia de ocultamiento según posición
+    switch (position) {
+      case 'BOTTOM':
+        hideY = container.height + 30;
+        break;
+      case 'TOP':
+        hideY = -(container.height + 30);
+        break;
+      case 'LEFT':
+        hideX = -(container.width + 30);
+        break;
+      case 'RIGHT':
+        hideX = container.width + 30;
+        break;
+    }
 
     if (animate) {
       // Animar salida completamente fuera de la pantalla
       container.ease({
-        translation_y: hideDistance,
+        translation_x: hideX,
+        translation_y: hideY,
         opacity: 0,
         duration: 200,
         mode: Clutter.AnimationMode.EASE_IN_QUAD,
       });
     } else {
       // Ocultar instantáneamente
-      container.translation_y = hideDistance;
+      container.translation_x = hideX;
+      container.translation_y = hideY;
       container.opacity = 0;
     }
   }
@@ -169,18 +208,18 @@ export class AutohideManager {
   disable() {
     // Limpiar timeouts
     if (this._hideTimeoutId) {
-      clearTimeout(this._hideTimeoutId);
+      GLib.source_remove(this._hideTimeoutId);
       this._hideTimeoutId = null;
     }
 
     if (this._showTimeoutId) {
-      clearTimeout(this._showTimeoutId);
+      GLib.source_remove(this._showTimeoutId);
       this._showTimeoutId = null;
     }
 
     // Desconectar eventos
     if (this._motionEventId) {
-      globalThis.stage.disconnect(this._motionEventId);
+      global.stage.disconnect(this._motionEventId);
       this._motionEventId = null;
     }
 

@@ -1,5 +1,6 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import { logError } from './utils.js';
 
 /**
  * Gestión de configuración del dock usando GSettings
@@ -7,31 +8,15 @@ import GLib from 'gi://GLib';
 export class DockSettings {
     constructor(extensionObject = null) {
         try {
-            if (extensionObject && extensionObject.getSettings) {
-                // Desde prefs.js
-                this._settings = extensionObject.getSettings('org.gnome.shell.extensions.tux-dock');
+            if (extensionObject && typeof extensionObject.getSettings === 'function') {
+                this._settings = extensionObject.getSettings();
             } else {
-                // Desde la extensión principal
-                const schemaDir = GLib.build_filenamev([
-                    GLib.get_home_dir(),
-                    '.local/share/gnome-shell/extensions/tux-dock@tomipoch.github.com/schemas'
-                ]);
-                
-                const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
-                    schemaDir,
-                    Gio.SettingsSchemaSource.get_default(),
-                    false
-                );
-                
-                const schema = schemaSource.lookup('org.gnome.shell.extensions.tux-dock', false);
-                if (!schema) {
-                    throw new Error('Schema not found. Run: glib-compile-schemas schemas/');
-                }
-                
-                this._settings = new Gio.Settings({ settings_schema: schema });
+                // Fallback manual si no hay extensionObject (no recomendado en GNOME 45+)
+                const schemaId = 'org.gnome.shell.extensions.tux-dock';
+                this._settings = new Gio.Settings({ schema_id: schemaId });
             }
         } catch (e) {
-            console.error('[TuxDock] Error initializing settings:', e);
+            logError('Error initializing settings', e);
             // Fallback a valores por defecto
             this._useFallback = true;
             this._fallbackSettings = {
@@ -328,23 +313,23 @@ export class DockSettings {
         if (this._useFallback || !this._settings) return;
         this._settings.disconnect(id);
     }
-    
+
     // Métodos para carpetas fijadas
     getPinnedFolders() {
         if (this._useFallback) return [];
         return this._settings.get_strv('pinned-folders');
     }
-    
+
     setPinnedFolders(folders) {
         if (this._useFallback) return;
         this._settings.set_strv('pinned-folders', folders);
     }
-    
+
     getMinimizeAnimation() {
         if (this._useFallback) return 'scale';
         return this._settings.get_string('minimize-animation');
     }
-    
+
     setMinimizeAnimation(animation) {
         if (this._useFallback) return;
         this._settings.set_string('minimize-animation', animation);

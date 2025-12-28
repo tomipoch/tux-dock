@@ -16,9 +16,12 @@ export class DockContainer {
   }
 
   build() {
+    const position = this._settings.getPosition();
+    const isVertical = position === "LEFT" || position === "RIGHT";
+
     this._container = new St.BoxLayout({
       style_class: "tux-dock-container",
-      vertical: false,
+      vertical: isVertical,
       reactive: true,
       track_hover: true,
       x_align: Clutter.ActorAlign.CENTER,
@@ -38,7 +41,11 @@ export class DockContainer {
       this._container,
       this._settings
     );
-    this._magnification.enable();
+
+    // Only enable if the setting is enabled
+    if (this._settings.getMagnificationEnabled()) {
+      this._magnification.enable();
+    }
 
     return this._container;
   }
@@ -50,7 +57,7 @@ export class DockContainer {
 
     const opacity = this._settings.getDockOpacity();
     const borderRadius = 18;
-    const innerPadding = this._settings.getIconMargin?.() ?? 10;
+    const innerPadding = 6; // Reduced from 10 since icons have their own margins
 
     // padding IGUAL en todos los lados
     this._container.set_style(`
@@ -62,8 +69,8 @@ export class DockContainer {
     // separación uniforme entre iconos
     this._container.set_style_class_name("tux-dock-container");
 
-    // para que los iconos no peguen al borde
-    this._container.spacing = innerPadding;
+    // Reduced spacing since icons have margins
+    this._container.spacing = 2;
   }
 
   /* ---------------- posicionamiento ---------------- */
@@ -74,6 +81,12 @@ export class DockContainer {
     const monitor = Main.layoutManager.primaryMonitor;
     const position = this._settings.getPosition();
     const outerMargin = this._settings.getDockMargin();
+
+    // Actualizar orientación según posición
+    const shouldBeVertical = position === "LEFT" || position === "RIGHT";
+    if (this._container.vertical !== shouldBeVertical) {
+      this._container.vertical = shouldBeVertical;
+    }
 
     // quitamos animaciones para evitar saltos
     this._container.remove_all_transitions();
@@ -87,29 +100,21 @@ export class DockContainer {
       const height = this._container.height;
 
       if (position === "BOTTOM") {
-        this._container.vertical = false;
-
         this._container.set_position(
           monitor.x + Math.floor((monitor.width - width) / 2),
           monitor.y + monitor.height - height - outerMargin
         );
       } else if (position === "TOP") {
-        this._container.vertical = false;
-
         this._container.set_position(
           monitor.x + Math.floor((monitor.width - width) / 2),
           monitor.y + outerMargin
         );
       } else if (position === "LEFT") {
-        this._container.vertical = true;
-
         this._container.set_position(
           monitor.x + outerMargin,
           monitor.y + Math.floor((monitor.height - height) / 2)
         );
       } else if (position === "RIGHT") {
-        this._container.vertical = true;
-
         this._container.set_position(
           monitor.x + monitor.width - width - outerMargin,
           monitor.y + Math.floor((monitor.height - height) / 2)

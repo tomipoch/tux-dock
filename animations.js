@@ -264,7 +264,7 @@ export class NotificationBouncer {
 
   enable() {
     this._signalIds.push(
-      globalThis.display.connect("window-demands-attention", (_, win) =>
+      global.display.connect("window-demands-attention", (_, win) =>
         this._onAttention(win)
       )
     );
@@ -288,7 +288,7 @@ export class NotificationBouncer {
   disable() {
     this._signalIds.forEach((id) => {
       try {
-        globalThis.display.disconnect(id);
+        global.display.disconnect(id);
       } catch (error) {
         console.warn("Failed to disconnect signal:", error);
       }

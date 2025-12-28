@@ -133,21 +133,18 @@ export class AppManager {
   refresh() {
     // Prevenir re-entrada
     if (this._isRefreshing) {
-      log('[TuxDock AppManager] Refresh ya en progreso, saltando...');
+      console.log('[TuxDock AppManager] Refresh ya en progreso, saltando...');
       return;
     }
 
     this._isRefreshing = true;
-    log('[TuxDock AppManager] === INICIANDO REFRESH ===');
 
     try {
       // Obtener favoritas
       const favorites = this._getFavorites();
-      log(`[TuxDock AppManager] Favoritas: ${favorites.length}`);
 
       // Obtener apps abiertas
       const running = this._windowTracker.get_running_apps();
-      log(`[TuxDock AppManager] Apps abiertas: ${running.length}`);
 
       // Crear mapa de apps
       const appsMap = new Map();
@@ -184,13 +181,9 @@ export class AppManager {
         }
       });
 
-      log(`[TuxDock AppManager] Total apps a mostrar: ${order.length}`);
-
       // Verificar si necesita rebuild
       const existingOrder = Array.from(this._appIcons.keys());
       const needsRebuild = !this._arraysEqual(existingOrder, order);
-
-      log(`[TuxDock AppManager] Necesita rebuild: ${needsRebuild}`);
 
       if (needsRebuild) {
         this._rebuildDock(appsMap, order);
@@ -199,7 +192,6 @@ export class AppManager {
       }
     } finally {
       this._isRefreshing = false;
-      log('[TuxDock AppManager] === REFRESH COMPLETADO ===');
     }
   }
 

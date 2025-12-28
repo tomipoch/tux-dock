@@ -1,5 +1,6 @@
 import St from "gi://St";
 import Clutter from "gi://Clutter";
+import GLib from "gi://GLib";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
 /**
@@ -12,12 +13,13 @@ export class WindowPreview {
     this._currentApp = null;
     this._showTimeoutId = null;
     this._hideTimeoutId = null;
+    this._layoutTimeoutId = null; // Track layout timeout for cleanup
   }
 
   show(app, sourceActor) {
     // Cancelar ocultamiento
     if (this._hideTimeoutId) {
-      clearTimeout(this._hideTimeoutId);
+      GLib.source_remove(this._hideTimeoutId);
       this._hideTimeoutId = null;
     }
 
@@ -28,13 +30,14 @@ export class WindowPreview {
 
     // Programar mostrar con delay
     if (this._showTimeoutId) {
-      clearTimeout(this._showTimeoutId);
+      GLib.source_remove(this._showTimeoutId);
     }
 
-    this._showTimeoutId = setTimeout(() => {
+    this._showTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
       this._createPreview(app, sourceActor);
       this._showTimeoutId = null;
-    }, 500);
+      return GLib.SOURCE_REMOVE;
+    });
   }
 
   _createPreview(app, sourceActor) {
@@ -81,25 +84,41 @@ export class WindowPreview {
     this._previewContainer.queue_relayout();
 
     // Usar timeout para asegurar que las dimensiones estén disponibles
-    setTimeout(() => {
-      if (!this._previewContainer) return;
+    this._layoutTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, () => {
+      try {
+        if (!this._previewContainer) {
+          this._layoutTimeoutId = null;
+          return GLib.SOURCE_REMOVE;
+        }
 
-      const previewWidth = this._previewContainer.width || 220;
-      const previewHeight = this._previewContainer.height || 100;
+        const previewWidth = this._previewContainer.width || 220;
+        const previewHeight = this._previewContainer.height || 100;
 
-      // Calcular posición centrada sobre el icono
-      let x = sourceX + sourceWidth / 2 - previewWidth / 2;
-      let y = sourceY - previewHeight - 15;
+        // Calcular posición centrada sobre el icono
+        let x = sourceX + sourceWidth / 2 - previewWidth / 2;
+        let y = sourceY - previewHeight - 15;
 
-      // Asegurar que no se salga de la pantalla
-      if (x < monitor.x + 10) x = monitor.x + 10;
-      if (x + previewWidth > monitor.x + monitor.width - 10) {
-        x = monitor.x + monitor.width - previewWidth - 10;
+        // Asegurar que no se salga de la pantalla
+        if (x < monitor.x + 10) x = monitor.x + 10;
+        if (x + previewWidth > monitor.x + monitor.width - 10) {
+          x = monitor.x + monitor.width - previewWidth - 10;
+        }
+        if (y < monitor.y + 10) y = monitor.y + 10;
+
+        this._previewContainer.set_position(x, y);
+      } catch (e) {
+        // En caso de error, limpiar
+        if (this._previewContainer) {
+          Main.layoutManager.removeChrome(this._previewContainer);
+          this._previewContainer.destroy();
+          this._previewContainer = null;
+          this._currentApp = null;
+        }
       }
-      if (y < monitor.y + 10) y = monitor.y + 10;
 
-      this._previewContainer.set_position(x, y);
-    }, 10);
+      this._layoutTimeoutId = null;
+      return GLib.SOURCE_REMOVE;
+    });
 
     // Animar entrada
     this._previewContainer.opacity = 0;
@@ -145,9 +164,8 @@ export class WindowPreview {
 
     const title = new St.Label({
       text: displayText,
-      style: `color: ${
-        isMinimized ? "rgba(255, 255, 255, 0.6)" : "white"
-      }; font-size: 12px;`,
+      style: `color: ${isMinimized ? "rgba(255, 255, 255, 0.6)" : "white"
+        }; font-size: 12px;`,
       y_align: Clutter.ActorAlign.CENTER,
     });
 
@@ -160,7 +178,7 @@ export class WindowPreview {
       if (window.minimized) {
         window.unminimize();
       }
-      window.activate(globalThis.get_current_time());
+      window.activate(global.get_current_time());
       this.hide();
     });
 
@@ -169,7 +187,7 @@ export class WindowPreview {
       if (btn.hover) {
         btn.set_style(
           btn.get_style() +
-            `
+          `
                     background-color: rgba(255, 255, 255, 0.1);
                 `
         );
@@ -188,7 +206,7 @@ export class WindowPreview {
   hide() {
     // Cancelar mostrar
     if (this._showTimeoutId) {
-      clearTimeout(this._showTimeoutId);
+      GLib.source_remove(this._showTimeoutId);
       this._showTimeoutId = null;
     }
 
@@ -213,15 +231,16 @@ export class WindowPreview {
   scheduleHide() {
     if (this._hideTimeoutId) return;
 
-    this._hideTimeoutId = setTimeout(() => {
+    this._hideTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
       this.hide();
       this._hideTimeoutId = null;
-    }, 300);
+      return GLib.SOURCE_REMOVE;
+    });
   }
 
   cancelHide() {
     if (this._hideTimeoutId) {
-      clearTimeout(this._hideTimeoutId);
+      GLib.source_remove(this._hideTimeoutId);
       this._hideTimeoutId = null;
     }
   }
@@ -230,8 +249,13 @@ export class WindowPreview {
     this.hide();
 
     if (this._showTimeoutId) {
-      clearTimeout(this._showTimeoutId);
+      GLib.source_remove(this._showTimeoutId);
       this._showTimeoutId = null;
+    }
+
+    if (this._layoutTimeoutId) {
+      GLib.source_remove(this._layoutTimeoutId);
+      this._layoutTimeoutId = null;
     }
   }
 }

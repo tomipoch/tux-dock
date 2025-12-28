@@ -2,7 +2,7 @@ import St from "gi://St";
 import Clutter from "gi://Clutter";
 import Gio from "gi://Gio";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
-import * as AppFavorites from "resource:///org/gnome/shell/ui/appFavorites.js";
+import { getAppFavorites } from "resource:///org/gnome/shell/ui/appFavorites.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as Util from "resource:///org/gnome/shell/misc/util.js";
 
@@ -14,15 +14,15 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
       dockPos === "TOP"
         ? St.Side.BOTTOM
         : dockPos === "LEFT"
-        ? St.Side.RIGHT
-        : dockPos === "RIGHT"
-        ? St.Side.LEFT
-        : St.Side.TOP;
+          ? St.Side.RIGHT
+          : dockPos === "RIGHT"
+            ? St.Side.LEFT
+            : St.Side.TOP;
 
     super(source, 0.0, side);
 
     this._app = app;
-    this._favorites = AppFavorites.getAppFavorites();
+    this._favorites = getAppFavorites();
     this._settings = settings;
 
     this.blockSourceEvents = true;
@@ -37,7 +37,6 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
     // cerrar cuando se haga click fuera
     this.actor.connect("key-focus-out", () => this.close());
     this.actor.connect("button-press-event", () => this.close());
-    this.actor.connect("leave-event", () => this.close());
   }
 
   _addHeader() {
@@ -103,7 +102,9 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
         "folder-open-symbolic",
         () => {
           const path = appInfo.get_filename();
-          Util.spawn(["xdg-open", GLib.path_get_dirname(path)]);
+          if (path) {
+            Util.spawn(["xdg-open", GLib.path_get_dirname(path)]);
+          }
         }
       );
     }

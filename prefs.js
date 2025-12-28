@@ -1,7 +1,7 @@
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
-import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 /**
  * Panel de preferencias de TuxDock
@@ -9,7 +9,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 export default class TuxDockPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings('org.gnome.shell.extensions.tux-dock');
-        
+
         // ====== PÁGINA 1: APARIENCIA ======
         const appearancePage = new Adw.PreferencesPage({
             title: 'Apariencia',
@@ -43,7 +43,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             hexpand: true,
             valign: Gtk.Align.CENTER,
         });
-        
+
         iconSizeScale.set_digits(0);
         settings.bind('icon-size', iconSizeScale.adjustment, 'value', Gio.SettingsBindFlags.DEFAULT);
 
@@ -60,7 +60,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('magnification-enabled'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('magnification-enabled', magnificationSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         magnificationRow.add_suffix(magnificationSwitch);
@@ -78,7 +78,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             spacing: 12,
             hexpand: true,
         });
-        
+
         const magnificationScaleScale = new Gtk.Scale({
             orientation: Gtk.Orientation.HORIZONTAL,
             adjustment: new Gtk.Adjustment({
@@ -92,12 +92,12 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             hexpand: true,
             valign: Gtk.Align.CENTER,
         });
-        
+
         magnificationScaleScale.set_digits(1);
         magnificationScaleScale.set_size_request(200, -1);
         settings.bind('magnification-scale', magnificationScaleScale.adjustment, 'value', Gio.SettingsBindFlags.DEFAULT);
 
-        
+
         magnificationScaleBox.append(magnificationScaleScale);
         magnificationScaleRow.add_suffix(magnificationScaleBox);
         iconsGroup.add(magnificationScaleRow);
@@ -122,12 +122,12 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         positionRow.set_model(positionModel);
 
         // Mapear valores
-        const positionMap = {'BOTTOM': 0, 'LEFT': 1, 'RIGHT': 2};
+        const positionMap = { 'BOTTOM': 0, 'LEFT': 1, 'RIGHT': 2 };
         const positionMapReverse = ['BOTTOM', 'LEFT', 'RIGHT'];
-        
+
         const currentPosition = settings.get_string('position');
         positionRow.set_selected(positionMap[currentPosition] || 0);
-        
+
         positionRow.connect('notify::selected', (widget) => {
             settings.set_string('position', positionMapReverse[widget.selected]);
         });
@@ -153,7 +153,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             hexpand: true,
             valign: Gtk.Align.CENTER,
         });
-        
+
         opacityScale.set_digits(0);
         opacityScale.connect('value-changed', (widget) => {
             settings.set_double('dock-opacity', widget.get_value() / 100);
@@ -177,7 +177,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             }),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('dock-margin', marginSpinner, 'value', Gio.SettingsBindFlags.DEFAULT);
 
         marginRow.add_suffix(marginSpinner);
@@ -207,7 +207,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('autohide'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('autohide', autohideSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         autohideRow.add_suffix(autohideSwitch);
@@ -224,7 +224,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('show-running-indicator'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('show-running-indicator', indicatorsSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         indicatorsRow.add_suffix(indicatorsSwitch);
@@ -241,7 +241,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('intellihide'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('intellihide', intellihideSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         intellihideRow.add_suffix(intellihideSwitch);
@@ -258,7 +258,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('push-windows'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('push-windows', pushWindowsSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         pushWindowsRow.add_suffix(pushWindowsSwitch);
@@ -275,7 +275,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('minimize-to-dock'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('minimize-to-dock', minimizeToDockSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         minimizeToDockRow.add_suffix(minimizeToDockSwitch);
@@ -301,11 +301,11 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         clickActionModel.append('Mostrar previsualizaciones');
         clickActionRow.set_model(clickActionModel);
 
-        const clickMap = {'focus-or-launch': 0, 'minimize-or-focus': 1, 'previews': 2};
+        const clickMap = { 'focus-or-launch': 0, 'minimize-or-focus': 1, 'previews': 2 };
         const clickMapReverse = ['focus-or-launch', 'minimize-or-focus', 'previews'];
-        
+
         clickActionRow.set_selected(clickMap[settings.get_string('click-action')] || 0);
-        
+
         clickActionRow.connect('notify::selected', (widget) => {
             settings.set_string('click-action', clickMapReverse[widget.selected]);
         });
@@ -324,11 +324,11 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         middleClickModel.append('Cerrar aplicación');
         middleClickRow.set_model(middleClickModel);
 
-        const middleMap = {'new-window': 0, 'minimize': 1, 'quit': 2};
+        const middleMap = { 'new-window': 0, 'minimize': 1, 'quit': 2 };
         const middleMapReverse = ['new-window', 'minimize', 'quit'];
-        
+
         middleClickRow.set_selected(middleMap[settings.get_string('middle-click-action')] || 0);
-        
+
         middleClickRow.connect('notify::selected', (widget) => {
             settings.set_string('middle-click-action', middleMapReverse[widget.selected]);
         });
@@ -346,11 +346,11 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         scrollActionModel.append('Nada');
         scrollActionRow.set_model(scrollActionModel);
 
-        const scrollMap = {'cycle-windows': 0, 'nothing': 1};
+        const scrollMap = { 'cycle-windows': 0, 'nothing': 1 };
         const scrollMapReverse = ['cycle-windows', 'nothing'];
-        
+
         scrollActionRow.set_selected(scrollMap[settings.get_string('scroll-action')] || 0);
-        
+
         scrollActionRow.connect('notify::selected', (widget) => {
             settings.set_string('scroll-action', scrollMapReverse[widget.selected]);
         });
@@ -381,7 +381,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('show-trash'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('show-trash', showTrashSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         showTrashRow.add_suffix(showTrashSwitch);
@@ -398,7 +398,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('show-app-launcher'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('show-app-launcher', showAppLauncherSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         showAppLauncherRow.add_suffix(showAppLauncherSwitch);
@@ -410,7 +410,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             title: 'Animaciones',
             description: 'Configurar efectos de animación',
         });
-        
+
         animationsPage.add(animationsGroup);
 
         // Animación de lanzamiento
@@ -423,7 +423,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             active: settings.get_boolean('enable-bounce'),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('enable-bounce', bounceSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         bounceRow.add_suffix(bounceSwitch);
@@ -442,11 +442,11 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         minimizeAnimModel.append('Ninguna');
         minimizeAnimRow.set_model(minimizeAnimModel);
 
-        const minimizeMap = {'scale': 0, 'genie': 1, 'none': 2};
+        const minimizeMap = { 'scale': 0, 'genie': 1, 'none': 2 };
         const minimizeMapReverse = ['scale', 'genie', 'none'];
-        
+
         minimizeAnimRow.set_selected(minimizeMap[settings.get_string('minimize-animation')] || 0);
-        
+
         minimizeAnimRow.connect('notify::selected', (widget) => {
             settings.set_string('minimize-animation', minimizeMapReverse[widget.selected]);
         });
@@ -468,7 +468,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
             }),
             valign: Gtk.Align.CENTER,
         });
-        
+
         settings.bind('animation-duration', animDurationSpinner, 'value', Gio.SettingsBindFlags.DEFAULT);
 
         animDurationRow.add_suffix(animDurationSpinner);
@@ -478,7 +478,7 @@ export default class TuxDockPreferences extends ExtensionPreferences {
         const infoGroup = new Adw.PreferencesGroup({
             title: 'Acerca de',
         });
-        
+
         animationsPage.add(infoGroup);
 
         const aboutRow = new Adw.ActionRow({

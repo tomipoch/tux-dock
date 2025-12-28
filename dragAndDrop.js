@@ -225,13 +225,74 @@ export class DragDropHandler {
   }
 
   _showInsertionIndicator(targetActor, x, y) {
-    // TODO: dibujar la línea entre iconos
-    // Por ahora, solo limpiamos cualquier indicador previo
+    // Limpiar indicador previo
     this._hideInsertionIndicator();
+
+    if (!targetActor) return;
+
+    // Crear línea indicadora
+    this._insertionIndicator = new St.Widget({
+      style_class: 'tux-dock-insertion-indicator',
+      width: 3,
+      height: 48,
+    });
+
+    this._insertionIndicator.set_style(`
+      background-color: rgba(52, 152, 219, 0.8);
+      border-radius: 2px;
+      box-shadow: 0 0 8px rgba(52, 152, 219, 0.6);
+    `);
+
+    // Obtener posición del contenedor del dock
+    const dockContainer = this._appManager._dockContainer.getContainer();
+    if (!dockContainer) return;
+
+    const isVertical = dockContainer.vertical;
+
+    // Determinar si insertar antes o después del target
+    const [targetX, targetY] = targetActor.get_transformed_position();
+    const targetWidth = targetActor.width;
+    const targetHeight = targetActor.height;
+
+    let indicatorX, indicatorY;
+
+    if (isVertical) {
+      // Dock vertical (LEFT o RIGHT)
+      const midY = targetY + targetHeight / 2;
+      const insertBefore = y < midY;
+
+      this._insertionIndicator.width = 48;
+      this._insertionIndicator.height = 3;
+
+      indicatorX = targetX;
+      indicatorY = insertBefore ? targetY - 2 : targetY + targetHeight - 1;
+    } else {
+      // Dock horizontal (BOTTOM o TOP)
+      const midX = targetX + targetWidth / 2;
+      const insertBefore = x < midX;
+
+      this._insertionIndicator.width = 3;
+      this._insertionIndicator.height = 48;
+
+      indicatorX = insertBefore ? targetX - 2 : targetX + targetWidth - 1;
+      indicatorY = targetY;
+    }
+
+    Main.layoutManager.addChrome(this._insertionIndicator);
+    this._insertionIndicator.set_position(indicatorX, indicatorY);
+
+    // Animar entrada
+    this._insertionIndicator.opacity = 0;
+    this._insertionIndicator.ease({
+      opacity: 255,
+      duration: 100,
+      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+    });
   }
 
   _hideInsertionIndicator() {
     if (this._insertionIndicator) {
+      Main.layoutManager.removeChrome(this._insertionIndicator);
       this._insertionIndicator.destroy();
       this._insertionIndicator = null;
     }
@@ -323,6 +384,9 @@ export class DragDropHandler {
           if (!favorites.isFavorite(appId)) {
             favorites.addFavorite(appId);
             log(`[TuxDock] App ${appId} añadida a favoritos`);
+
+            // Animación de feedback
+            this._showAddedFeedback(container);
           }
 
           appManager.refresh();
@@ -335,13 +399,40 @@ export class DragDropHandler {
 
       handleDragOver: (source, actor, x, y, time) => {
         if (source.app) {
+          // Highlight visual del dock cuando se puede agregar
+          container.add_style_pseudo_class('drop-target');
+          container.opacity = 200; // Ligeramente más visible
           return DND.DragMotionResult.COPY_DROP;
         }
         return DND.DragMotionResult.CONTINUE;
       },
     };
 
+    // Limpiar highlight cuando el drag sale del dock
+    container.connect('leave-event', () => {
+      container.remove_style_pseudo_class('drop-target');
+      container.opacity = 255;
+    });
+
     log("[TuxDock] Drop target configurado");
+  }
+
+  _showAddedFeedback(container) {
+    // Pulso visual para confirmar que se agregó
+    container.ease({
+      scale_x: 1.05,
+      scale_y: 1.05,
+      duration: 150,
+      mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+      onComplete: () => {
+        container.ease({
+          scale_x: 1.0,
+          scale_y: 1.0,
+          duration: 150,
+          mode: Clutter.AnimationMode.EASE_IN_QUAD,
+        });
+      },
+    });
   }
 
   _handleFolderDrop(uri, appManager) {

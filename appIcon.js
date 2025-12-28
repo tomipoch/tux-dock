@@ -13,7 +13,7 @@ import { DockAnimations } from "./animations.js";
  * Icono de aplicación del dock
  */
 export class AppIcon {
-  constructor(app, windowTracker, iconSize = 48) {
+  constructor(app, windowTracker, iconSize = 48, settings = null) {
     this.app = app;
     this._windowTracker = windowTracker;
     this._iconSize = iconSize;
@@ -32,10 +32,13 @@ export class AppIcon {
     this._badge = null;
     this._badgeCount = 0;
 
-    this._settings = new DockSettings();
+    this._settings = settings || new DockSettings();
     this._animations = new DockAnimations();
 
     this._wasRunning = false;
+
+    // Track signal IDs for cleanup
+    this._signalIds = [];
   }
 
   /* ---------------- build ---------------- */
@@ -54,13 +57,14 @@ export class AppIcon {
       track_hover: true,
     });
 
+    // Apply initial rounded background style
+    this._applyButtonStyle(false);
+
     /* icono */
     this._icon = new St.Icon({
       gicon: this.app.get_app_info().get_icon(),
-      icon_size: this._iconSize,
     });
-
-    this._button.set_child(this._icon);
+    this._icon.set_icon_size(this._iconSize);
 
     /* badge */
     this._badge = new St.Label({
@@ -108,6 +112,19 @@ export class AppIcon {
     return this._container;
   }
 
+  /* ---------------- styling ---------------- */
+
+  _applyButtonStyle(isHovered) {
+    const bgColor = isHovered ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+    this._button.set_style(`
+      background-color: ${bgColor};
+      border-radius: 12px;
+      padding: 8px;
+      margin: 4px;
+      transition-duration: 200ms;
+    `);
+  }
+
   /* ---------------- estado visual ---------------- */
 
   _updateVisualState() {
@@ -143,33 +160,41 @@ export class AppIcon {
 
   _connectEvents() {
     /* clics */
-    this._button.connect("button-press-event", (_, event) => {
-      const button = event.get_button();
+    this._signalIds.push(
+      this._button.connect("button-press-event", (_, event) => {
+        const button = event.get_button();
 
-      if (button === 1) this._onLeftClick();
-      else if (button === 2) this._onMiddleClick();
-      else if (button === 3) this._showContextMenu();
+        if (button === 1) this._onLeftClick();
+        else if (button === 2) this._onMiddleClick();
+        else if (button === 3) this._showContextMenu();
 
-      return Clutter.EVENT_STOP;
-    });
+        return Clutter.EVENT_STOP;
+      })
+    );
 
     /* hover → tooltip y preview */
-    this._button.connect("notify::hover", (btn) => {
-      if (btn.hover) {
-        this._scheduleTooltip();
-        this._schedulePreview();
-      } else {
-        this._hideTooltip();
-        this._cancelPreview();
-      }
-    });
+    this._signalIds.push(
+      this._button.connect("notify::hover", (btn) => {
+        if (btn.hover) {
+          this._applyButtonStyle(true);
+          this._scheduleTooltip();
+          this._schedulePreview();
+        } else {
+          this._applyButtonStyle(false);
+          this._hideTooltip();
+          this._cancelPreview();
+        }
+      })
+    );
 
     /* scroll entre ventanas */
-    this._button.connect("scroll-event", (_, event) => {
-      if (this._settings.getScrollAction() === "cycle-windows")
-        this._cycleWindows(event.get_scroll_direction());
-      return Clutter.EVENT_STOP;
-    });
+    this._signalIds.push(
+      this._button.connect("scroll-event", (_, event) => {
+        if (this._settings.getScrollAction() === "cycle-windows")
+          this._cycleWindows(event.get_scroll_direction());
+        return Clutter.EVENT_STOP;
+      })
+    );
   }
 
   /* ---------------- clicks ---------------- */
@@ -185,7 +210,7 @@ export class AppIcon {
     const focused = windows.find((w) => w.has_focus());
 
     if (focused) focused.minimize();
-    else windows[0].activate(globalThis.get_current_time());
+    else windows[0].activate(global.get_current_time());
   }
 
   _onMiddleClick() {
@@ -212,7 +237,7 @@ export class AppIcon {
       index = (index + 1) % windows.length;
     else index = (index - 1 + windows.length) % windows.length;
 
-    windows[index].activate(globalThis.get_current_time());
+    windows[index].activate(global.get_current_time());
   }
 
   /* ---------------- menu contextual ---------------- */
@@ -306,11 +331,33 @@ export class AppIcon {
     }
   }
 
+  /* ---------------- getter ---------------- */
+
+  updateState() {
+    this._updateVisualState();
+  }
+
+  getActor() {
+    return this._container;
+  }
+
   /* ---------------- destroy ---------------- */
 
   destroy() {
     this._cancelPreview();
     this._hideTooltip();
+
+    // Disconnect all signals
+    this._signalIds.forEach(id => {
+      if (this._button) {
+        try {
+          this._button.disconnect(id);
+        } catch (e) {
+          // Signal already disconnected
+        }
+      }
+    });
+    this._signalIds = [];
 
     if (this._tooltip) {
       Main.layoutManager.removeChrome(this._tooltip);

@@ -2,7 +2,9 @@
   "uuid": "tux-dock@tomipoch.github.com",
   "name": "Tux Dock",
   "description": "Un dock para Gnome Shell. Esta extensión mueve la barra fuera de la vista general, transformándola en un dock para facilitar el lanzamiento de aplicaciones y acelerar el cambio entre ventanas y escritorios. Hay opciones de colocación lateral e inferior disponibles.",
-  "shell-version": ["49"],
-  "version": 1,
-  "settings-schema": "org.gnome.shell.extensions.tux-dock"
+  "shell-version": ["45", "46", "47", "48", "49"],
+  "version": 2,
+  "url": "https://github.com/tomipoch/tux-dock",
+  "settings-schema": "org.gnome.shell.extensions.tux-dock",
+  "gettext-domain": "tux-dock"
 }

@@ -111,11 +111,11 @@ const MagicLampEffect = GObject.registerClass(
 /* ---------------- Minimize / Restore ---------------- */
 
 export class MinimizeToIcon {
-  constructor(dockContainer, appManager) {
+  constructor(dockContainer, appManager, settings) {
     this._dockContainer = dockContainer;
     this._appManager = appManager;
     this._windowTracker = Shell.WindowTracker.get_default();
-    this._settings = new DockSettings();
+    this._settings = settings; // Use passed settings instead of creating new instance
     this._signalIds = [];
     this._timeouts = [];
   }
@@ -124,10 +124,10 @@ export class MinimizeToIcon {
     if (!this._settings.getMinimizeToDock()) return;
 
     this._signalIds.push(
-      globalThis.window_manager.connect("minimize", (wm, actor) => {
+      global.window_manager.connect("minimize", (wm, actor) => {
         this._onMinimize(actor);
       }),
-      globalThis.window_manager.connect("unminimize", (wm, actor) => {
+      global.window_manager.connect("unminimize", (wm, actor) => {
         this._onUnminimize(actor);
       })
     );
@@ -365,7 +365,7 @@ export class MinimizeToIcon {
   disable() {
     this._signalIds.forEach((id) => {
       try {
-        globalThis.window_manager.disconnect(id);
+        global.window_manager.disconnect(id);
       } catch (error) {
         console.warn("Failed to disconnect signal:", error);
       }

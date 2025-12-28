@@ -3,6 +3,7 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
+import { logError } from './utils.js';
 
 /**
  * Icono especial para el lanzador de aplicaciones (App Grid)
@@ -11,6 +12,7 @@ export class AppLauncherIcon {
     constructor(iconSize = 48) {
         this._button = null;
         this._iconSize = iconSize;
+        this._signalIds = []; // Track signals for cleanup
     }
 
     build() {
@@ -23,54 +25,52 @@ export class AppLauncherIcon {
             y_expand: false,
         });
 
-        this._button.set_style(`
-            padding: 6px;
-            margin: 0 2px;
-            border-radius: 12px;
-            transition-duration: 200ms;
-        `);
+        this._applyButtonStyle(false);
 
         // Crear icono de grid/lanzador
-        const icon = new St.Icon({
+        this._icon = new St.Icon({
             icon_name: 'view-app-grid-symbolic',
             icon_size: this._iconSize,
             style_class: 'app-launcher-icon',
         });
 
-        this._button.set_child(icon);
+        this._button.set_child(this._icon);
 
         // Conectar eventos
-        this._button.connect('clicked', () => {
-            // Abrir el cajón de aplicaciones (App Grid)
-            if (Main.overview.visible) {
-                if (Main.overview.dash.showAppsButton.checked) {
-                    Main.overview.hide();
+        this._signalIds.push(
+            this._button.connect('clicked', () => {
+                // Abrir el cajón de aplicaciones (App Grid)
+                if (Main.overview.visible) {
+                    if (Main.overview.dash.showAppsButton.checked) {
+                        Main.overview.hide();
+                    } else {
+                        Main.overview.showApps();
+                    }
                 } else {
                     Main.overview.showApps();
                 }
-            } else {
-                Main.overview.showApps();
-            }
-        });
+            })
+        );
 
         // Hover effect
-        this._button.connect('notify::hover', (btn) => {
-            if (btn.hover) {
-                btn.set_style(btn.get_style() + `
-                    background-color: rgba(255, 255, 255, 0.25);
-                    transform: scale(1.1);
-                `);
-            } else {
-                btn.set_style(`
-                    padding: 6px;
-                    margin: 0 2px;
-                    border-radius: 12px;
-                    transition-duration: 200ms;
-                `);
-            }
-        });
+        this._signalIds.push(
+            this._button.connect('notify::hover', (btn) => {
+                this._applyButtonStyle(btn.hover);
+            })
+        );
 
         return this._button;
+    }
+
+    _applyButtonStyle(isHovered) {
+        const bgColor = isHovered ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+        this._button.set_style(`
+            background-color: ${bgColor};
+            border-radius: 12px;
+            padding: 8px;
+            margin: 4px;
+            transition-duration: 200ms;
+        `);
     }
 
     getActor() {
@@ -78,6 +78,18 @@ export class AppLauncherIcon {
     }
 
     destroy() {
+        // Disconnect all signals
+        this._signalIds.forEach(id => {
+            if (this._button) {
+                try {
+                    this._button.disconnect(id);
+                } catch (e) {
+                    // Signal already disconnected
+                }
+            }
+        });
+        this._signalIds = [];
+
         if (this._button) {
             this._button.destroy();
             this._button = null;
@@ -93,6 +105,8 @@ export class TrashIcon {
         this._button = null;
         this._iconSize = iconSize;
         this._trashMonitor = null;
+        this._trashPollId = null; // Polling fallback ID
+        this._signalIds = []; // Track signals for cleanup
     }
 
     build() {
@@ -105,12 +119,7 @@ export class TrashIcon {
             y_expand: false,
         });
 
-        this._button.set_style(`
-            padding: 6px;
-            margin: 0 2px;
-            border-radius: 12px;
-            transition-duration: 200ms;
-        `);
+        this._applyButtonStyle(false);
 
         // Crear icono de papelera
         this._icon = new St.Icon({
@@ -128,31 +137,23 @@ export class TrashIcon {
         this._setupDropTarget();
 
         // Conectar eventos
-        this._button.connect('clicked', () => {
-            // Abrir papelera en el gestor de archivos
-            try {
-                Gio.AppInfo.launch_default_for_uri('trash:///', null);
-            } catch (e) {
-                console.error('Error al abrir papelera:', e);
-            }
-        });
+        this._signalIds.push(
+            this._button.connect('clicked', () => {
+                // Abrir papelera en el gestor de archivos
+                try {
+                    Gio.AppInfo.launch_default_for_uri('trash:///', null);
+                } catch (e) {
+                    logError('Error al abrir papelera', e);
+                }
+            })
+        );
 
         // Hover effect
-        this._button.connect('notify::hover', (btn) => {
-            if (btn.hover) {
-                btn.set_style(btn.get_style() + `
-                    background-color: rgba(255, 255, 255, 0.25);
-                    transform: scale(1.1);
-                `);
-            } else {
-                btn.set_style(`
-                    padding: 6px;
-                    margin: 0 2px;
-                    border-radius: 12px;
-                    transition-duration: 200ms;
-                `);
-            }
-        });
+        this._signalIds.push(
+            this._button.connect('notify::hover', (btn) => {
+                this._applyButtonStyle(btn.hover);
+            })
+        );
 
         return this._button;
     }
@@ -167,7 +168,7 @@ export class TrashIcon {
                 }
                 return false;
             },
-            
+
             handleDragOver: (source, actor, x, y, time) => {
                 if (source._fileUri) {
                     // Resaltar la papelera cuando se arrastra un archivo sobre ella
@@ -181,7 +182,7 @@ export class TrashIcon {
                 return DND.DragMotionResult.CONTINUE;
             }
         };
-        
+
         // Remover el estilo cuando el drag sale
         this._button.connect('leave-event', () => {
             this._button.remove_style_pseudo_class('drop-target');
@@ -197,15 +198,15 @@ export class TrashIcon {
     _moveToTrash(fileUri) {
         try {
             const file = Gio.File.new_for_uri(fileUri);
-            
+
             // Mover archivo a la papelera
             file.trash(null);
-            
+
             console.log(`[TuxDock] Archivo movido a la papelera: ${fileUri}`);
-            
+
             // Actualizar icono inmediatamente
             this._updateTrashIcon();
-            
+
             // Animación de pulso para feedback visual
             this._button.ease({
                 scale_x: 1.2,
@@ -221,10 +222,10 @@ export class TrashIcon {
                     });
                 }
             });
-            
+
             return true;
         } catch (e) {
-            console.error('[TuxDock] Error moviendo archivo a la papelera:', e);
+            logError('Error moviendo archivo a la papelera', e);
             return false;
         }
     }
@@ -239,7 +240,13 @@ export class TrashIcon {
                 this._updateTrashIcon();
             });
         } catch (e) {
-            console.error('Error al monitorear papelera:', e);
+            logError('Error al monitorear papelera', e);
+
+            // Fallback: polling manual cada 5 segundos
+            this._trashPollId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+                this._updateTrashIcon();
+                return GLib.SOURCE_CONTINUE; // Continuar polling
+            });
         }
     }
 
@@ -254,10 +261,10 @@ export class TrashIcon {
                 Gio.FileQueryInfoFlags.NONE,
                 null
             );
-            
+
             const hasItems = enumerator.next_file(null) !== null;
             enumerator.close(null);
-            
+
             // Usar iconos no simbólicos (coloridos) para mejor visualización
             this._icon.icon_name = hasItems ? 'user-trash-full' : 'user-trash';
         } catch (e) {
@@ -266,21 +273,49 @@ export class TrashIcon {
         }
     }
 
+    _applyButtonStyle(isHovered) {
+        const bgColor = isHovered ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+        this._button.set_style(`
+            background-color: ${bgColor};
+            border-radius: 12px;
+            padding: 8px;
+            margin: 4px;
+            transition-duration: 200ms;
+        `);
+    }
+
     getActor() {
         return this._button;
     }
 
     destroy() {
+        // Disconnect all signals
+        this._signalIds.forEach(id => {
+            if (this._button) {
+                try {
+                    this._button.disconnect(id);
+                } catch (e) {
+                    // Signal already disconnected
+                }
+            }
+        });
+        this._signalIds = [];
+
         if (this._trashMonitor) {
             this._trashMonitor.cancel();
             this._trashMonitor = null;
         }
-        
+
+        if (this._trashPollId) {
+            GLib.source_remove(this._trashPollId);
+            this._trashPollId = null;
+        }
+
         if (this._button) {
             this._button.destroy();
             this._button = null;
         }
-        
+
         this._icon = null;
     }
 }

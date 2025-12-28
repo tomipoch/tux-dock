@@ -25,7 +25,6 @@ export class MagnificationEffect {
 
         if (this._container) {
             this._container.reactive = true;
-            this._container.set_pointer_events(Clutter.PointerEvents.ALL);
         }
     }
 
@@ -48,6 +47,11 @@ export class MagnificationEffect {
     registerIcon(iconActor) {
         if (!iconActor) return;
 
+        // Evitar duplicados
+        if (this._icons.find(i => i.actor === iconActor)) {
+            return;
+        }
+
         this._icons.push({
             actor: iconActor,
             currentScale: 1,
@@ -58,6 +62,10 @@ export class MagnificationEffect {
     clearIcons() {
         this._icons.forEach(iconData => this._resetIcon(iconData));
         this._icons = [];
+    }
+
+    setMaxScale(scale) {
+        this._maxScale = scale;
     }
 
     /* ---------------- core macOS behaviour ---------------- */
