@@ -161,5 +161,11 @@
         <choice value="none"/>
       </choices>
     </key>
+    
+    <key name="icon-background" type="b">
+      <default>true</default>
+      <summary>Icon background</summary>
+      <description>Show background on dock icons</description>
+    </key>
   </schema>
 </schemalist>

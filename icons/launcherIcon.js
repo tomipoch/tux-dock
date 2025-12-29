@@ -7,11 +7,12 @@ import { IconSize, BorderRadius, Colors, CssClass } from '../core/config.js';
  * Icono especial para el lanzador de aplicaciones (App Grid)
  */
 export class AppLauncherIcon {
-    constructor(iconSize = IconSize.DEFAULT) {
+    constructor(iconSize = IconSize.DEFAULT, settings = null) {
         this._button = null;
         this._iconSize = iconSize;
         this._icon = null;
         this._signalIds = [];
+        this._settings = settings;
     }
 
     build() {
@@ -25,6 +26,11 @@ export class AppLauncherIcon {
         });
 
         this._applyButtonStyle(false);
+
+        // Aplicar clase no-background si está desactivado
+        if (this._settings && !this._settings.getIconBackground()) {
+            this._button.add_style_class_name('no-background');
+        }
 
         // Crear icono de grid/lanzador
         this._icon = new St.Icon({

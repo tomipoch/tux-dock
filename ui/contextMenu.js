@@ -91,6 +91,7 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
     /* -------- abrir nueva ventana -------- */
     if (this._app.can_open_new_window()) {
       this._addMenuItemWithIcon("Nueva ventana", "window-new-symbolic", () => {
+        this.close();
         this._app.open_new_window(-1);
       });
     }
@@ -102,6 +103,7 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
         "Mostrar en Archivos",
         "folder-open-symbolic",
         () => {
+          this.close();
           const path = appInfo.get_filename();
           if (path) {
             Util.spawn(["xdg-open", GLib.path_get_dirname(path)]);
@@ -132,6 +134,7 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
         "Cerrar todas",
         "application-exit-symbolic",
         () => {
+          this.close();
           windows.forEach((w) => w.delete(global.get_current_time()));
         }
       );
@@ -140,6 +143,7 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
         "Forzar cierre",
         "process-stop-symbolic",
         () => {
+          this.close();
           windows.forEach((w) => w.kill());
         }
       );
@@ -154,8 +158,15 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
       isFav ? "Desfijar del dock" : "Fijar en el dock",
       isFav ? "starred-symbolic" : "non-starred-symbolic",
       () => {
-        if (isFav) this._favorites.removeFavorite(this._app.get_id());
-        else this._favorites.addFavorite(this._app.get_id());
+        const id = this._app.get_id();
+        if (isFav) {
+          this._favorites.removeFavorite(id);
+          console.log(`[TuxDock] App desfijada: ${id}`);
+        } else {
+          this._favorites.addFavorite(id);
+          console.log(`[TuxDock] App fijada: ${id}`);
+        }
+        this.close();
       }
     );
 
@@ -167,7 +178,90 @@ export class AppContextMenu extends PopupMenu.PopupMenu {
       "dialog-information-symbolic",
       () => {
         if (appInfo) Util.spawn(["gnome-info", this._app.get_id()]);
+        this.close();
       }
     );
+  }
+}
+
+export class TrashContextMenu extends PopupMenu.PopupMenu {
+  constructor(source, settings) {
+    const dockPos = settings?.getPosition?.() || "BOTTOM";
+    const side =
+      dockPos === "TOP"
+        ? St.Side.BOTTOM
+        : dockPos === "LEFT"
+          ? St.Side.RIGHT
+          : dockPos === "RIGHT"
+            ? St.Side.LEFT
+            : St.Side.TOP;
+
+    super(source, 0.0, side);
+
+    this.actor.style_class = "tux-dock-context-menu";
+    this.actor.reactive = true;
+
+    this._buildMenu();
+
+    Main.uiGroup.add_child(this.actor);
+
+    this.actor.connect("key-focus-out", () => this.close());
+    this.actor.connect("button-press-event", () => this.close());
+  }
+
+  _buildMenu() {
+    this.removeAll();
+
+    // Header
+    const box = new St.BoxLayout({
+      style_class: "tux-dock-menu-header",
+      vertical: false,
+      x_align: Clutter.ActorAlign.START,
+    });
+    const icon = new St.Icon({ icon_name: 'user-trash', icon_size: 24 });
+    const title = new St.Label({
+      text: 'Papelera',
+      style: "font-weight: bold; margin-left: 8px;"
+    });
+    box.add_child(icon);
+    box.add_child(title);
+
+    const headerItem = new PopupMenu.PopupBaseMenuItem({ reactive: false });
+    headerItem.actor.add_child(box);
+    this.addMenuItem(headerItem);
+    this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+    // Abrir papelera
+    this._addMenuItemWithIcon("Abrir papelera", "folder-open-symbolic", () => {
+      try {
+        Gio.AppInfo.launch_default_for_uri('trash:///', null);
+      } catch (e) {
+        console.error('Error opening trash:', e);
+      }
+      this.close();
+    });
+
+    // Vaciar papelera
+    this._addMenuItemWithIcon("Vaciar papelera", "user-trash-symbolic", () => {
+      this.close();
+      try {
+        // Usar gio trash --empty command
+        Util.spawn(['gio', 'trash', '--empty']);
+      } catch (e) {
+        console.error('[TuxDock] Error vaciando papelera:', e);
+      }
+    });
+  }
+
+  _addMenuItemWithIcon(label, iconName, callback) {
+    const item = new PopupMenu.PopupMenuItem(label);
+    const icon = new St.Icon({
+      icon_name: iconName,
+      style_class: "popup-menu-icon",
+    });
+    item.insert_child_at_index(icon, 0);
+    item.connect("activate", callback);
+    this.addMenuItem(item);
+    return item;
   }
 }

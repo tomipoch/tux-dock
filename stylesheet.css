@@ -12,12 +12,24 @@
     transition-duration: 200ms;
 }
 
+.tux-dock-app-button.no-background {
+    background-color: transparent;
+}
+
 .tux-dock-app-button:hover {
     background-color: rgba(255, 255, 255, 0.2);
 }
 
+.tux-dock-app-button.no-background:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
 .tux-dock-app-button:checked {
     background-color: rgba(255, 255, 255, 0.25);
+}
+
+.tux-dock-app-button.no-background:checked {
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
 .tux-dock-app-button:focus {
@@ -42,4 +54,12 @@
     padding: 2px 6px;
     font-weight: bold;
     font-size: 10px;
+}
+
+.tux-dock-icon-container {
+    spacing: 0px;
+}
+
+.tux-dock-separator {
+    background-color: rgba(255, 255, 255, 0.3);
 }

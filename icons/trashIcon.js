@@ -5,21 +5,34 @@ import Clutter from 'gi://Clutter';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import { logError } from '../core/utils.js';
 import { IconSize, BorderRadius, Colors, CssClass, Trash } from '../core/config.js';
+import { TrashContextMenu } from '../ui/contextMenu.js';
 
 /**
  * Icono especial para la papelera
  */
 export class TrashIcon {
-    constructor(iconSize = IconSize.DEFAULT) {
+    constructor(iconSize = IconSize.DEFAULT, settings) {
         this._button = null;
         this._iconSize = iconSize;
+        this._settings = settings;
         this._icon = null;
         this._trashMonitor = null;
         this._trashPollId = null;
         this._signalIds = [];
+        this._menu = null;
+        this._menuManager = null;
+        this._container = null;
+        this._indicators = null;
     }
 
     build() {
+        // Contenedor principal
+        this._container = new St.BoxLayout({
+            vertical: true,
+            style_class: 'tux-dock-icon-container',
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+
         this._button = new St.Button({
             style_class: `${CssClass.APP_BUTTON} ${CssClass.SPECIAL}`,
             reactive: true,
@@ -31,13 +44,48 @@ export class TrashIcon {
 
         this._applyButtonStyle(false);
 
+        // Aplicar clase no-background si está desactivado
+        if (!this._settings.getIconBackground()) {
+            this._button.add_style_class_name('no-background');
+        }
+
         // Crear icono de papelera
         this._icon = new St.Icon({
             icon_size: this._iconSize,
             style_class: 'trash-icon',
         });
 
-        this._button.set_child(this._icon);
+        /* indicadores - dentro del botón según posición del dock */
+        const position = this._settings.getPosition();
+        const isVerticalDock = position === 'LEFT' || position === 'RIGHT';
+
+        this._indicators = new St.BoxLayout({
+            vertical: !isVerticalDock, // Horizontal para dock vertical, vertical para horizontal
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        // Crear overlay para colocar icono e indicadores
+        const overlay = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
+        });
+
+        overlay.add_child(this._icon);
+
+        // Posicionar indicadores dentro del botón
+        const indicatorsBin = new St.Bin({
+            x_align: isVerticalDock ? 
+                (position === 'LEFT' ? Clutter.ActorAlign.START : Clutter.ActorAlign.END) :
+                Clutter.ActorAlign.CENTER,
+            y_align: isVerticalDock ? 
+                Clutter.ActorAlign.CENTER :
+                Clutter.ActorAlign.END,
+        });
+        indicatorsBin.add_child(this._indicators);
+        overlay.add_child(indicatorsBin);
+
+        this._button.set_child(overlay);
+        this._container.add_child(this._button);
 
         // Monitorear estado de la papelera
         this._updateTrashIcon();
@@ -58,6 +106,17 @@ export class TrashIcon {
             })
         );
 
+        // Context menu (Right click)
+        this._signalIds.push(
+            this._button.connect('button-press-event', (actor, event) => {
+                if (event.get_button() === 3) {
+                    this._openContextMenu();
+                    return Clutter.EVENT_STOP;
+                }
+                return Clutter.EVENT_PROPAGATE;
+            })
+        );
+
         // Hover effect
         this._signalIds.push(
             this._button.connect('notify::hover', (btn) => {
@@ -65,7 +124,7 @@ export class TrashIcon {
             })
         );
 
-        return this._button;
+        return this._container;
     }
 
     _setupDropTarget() {
@@ -171,9 +230,31 @@ export class TrashIcon {
 
             // Usar iconos no simbólicos (coloridos) para mejor visualización
             this._icon.icon_name = hasItems ? 'user-trash-full' : 'user-trash';
+
+            // Actualizar indicadores
+            this._updateIndicators(hasItems);
         } catch (e) {
             // Si hay error, asumir vacía
             this._icon.icon_name = 'user-trash';
+            this._updateIndicators(false);
+        }
+    }
+
+    _updateIndicators(hasItems) {
+        if (!this._indicators) return;
+
+        this._indicators.remove_all_children();
+
+        if (!hasItems) return;
+
+        // Mostrar indicador cuando la papelera tiene contenido
+        if (this._settings.getShowRunningIndicator()) {
+            const dot = new St.Widget({
+                width: 6,
+                height: 6,
+                style: 'background-color: white; border-radius: 3px; margin: 1px;',
+            });
+            this._indicators.add_child(dot);
         }
     }
 
@@ -189,7 +270,21 @@ export class TrashIcon {
     }
 
     getActor() {
-        return this._button;
+        return this._container;
+    }
+
+    _openContextMenu() {
+        if (this._menu) {
+            this._menu.close();
+            this._menu.destroy();
+        }
+
+        this._menu = new TrashContextMenu(this._button, this._settings);
+        this._menu.open();
+
+        this._menu.actor.connect('destroy', () => {
+            this._menu = null;
+        });
     }
 
     destroy() {
@@ -213,6 +308,11 @@ export class TrashIcon {
         if (this._trashPollId) {
             GLib.source_remove(this._trashPollId);
             this._trashPollId = null;
+        }
+
+        if (this._menu) {
+            this._menu.destroy();
+            this._menu = null;
         }
 
         if (this._button) {

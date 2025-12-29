@@ -58,7 +58,10 @@ export class AppIcon {
       track_hover: true,
     });
 
-    // Style is handled by stylesheet.css now
+    // Aplicar clase no-background si está desactivado
+    if (!this._settings.getIconBackground()) {
+      this._button.add_style_class_name('no-background');
+    }
 
     /* icono */
     this._icon = new St.Icon({
@@ -73,23 +76,23 @@ export class AppIcon {
       style_class: "tux-dock-badge",
     });
 
-    // Badge style moved to CSS
-    /*
-    this._badge.set_style(`
-            background-color: #e74c3c;
-            color: white;
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-weight: bold;
-        `);
-    */
-
     const badgeBin = new St.Bin({
       y_align: Clutter.ActorAlign.START,
       x_align: Clutter.ActorAlign.END,
     });
     badgeBin.add_child(this._badge);
 
+    /* indicadores - dentro del botón según posición del dock */
+    const position = this._settings.getPosition();
+    const isVerticalDock = position === 'LEFT' || position === 'RIGHT';
+
+    this._indicators = new St.BoxLayout({
+      vertical: !isVerticalDock, // Horizontal para dock vertical, vertical para horizontal
+      x_align: Clutter.ActorAlign.CENTER,
+      y_align: Clutter.ActorAlign.CENTER,
+    });
+
+    // Crear overlay para colocar icono, badge e indicadores
     const overlay = new St.Widget({
       layout_manager: new Clutter.BinLayout(),
     });
@@ -97,16 +100,20 @@ export class AppIcon {
     overlay.add_child(this._icon);
     overlay.add_child(badgeBin);
 
-    this._button.set_child(overlay);
-
-    /* indicadores */
-    this._indicators = new St.BoxLayout({
-      vertical: false,
-      x_align: Clutter.ActorAlign.CENTER,
+    // Posicionar indicadores dentro del botón
+    const indicatorsBin = new St.Bin({
+      x_align: isVerticalDock ? 
+        (position === 'LEFT' ? Clutter.ActorAlign.START : Clutter.ActorAlign.END) :
+        Clutter.ActorAlign.CENTER,
+      y_align: isVerticalDock ? 
+        Clutter.ActorAlign.CENTER :
+        Clutter.ActorAlign.END,
     });
+    indicatorsBin.add_child(this._indicators);
+    overlay.add_child(indicatorsBin);
 
+    this._button.set_child(overlay);
     this._container.add_child(this._button);
-    this._container.add_child(this._indicators);
 
     this._createTooltip();
     this._connectEvents();
@@ -144,7 +151,7 @@ export class AppIcon {
       const dot = new St.Widget({
         width: 6,
         height: 6,
-        style: "background-color: white; border-radius: 3px;",
+        style: "background-color: white; border-radius: 3px; margin: 1px;",
       });
       this._indicators.add_child(dot);
     }

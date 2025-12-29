@@ -157,15 +157,29 @@ class TuxDock {
             })
         );
 
-        // Escuchar cambios en posición - requiere reconstruir dock
+        // Escuchar cambios en fondo de iconos
         this._settingsChangedIds.push(
-            settings.connect('changed::position', () => {
-                log('Posición cambiada, reconstruyendo dock...');
+            settings.connect('changed::icon-background', () => {
+                log('[TuxDock] Fondo de iconos cambiado, reconstruyendo dock...');
                 if (this._appManager) {
                     this._appManager.forceRebuild();
                 }
+            })
+        );
+
+        // Escuchar cambios en posición - requiere reconstruir dock completamente
+        this._settingsChangedIds.push(
+            settings.connect('changed::position', () => {
+                log('Posición cambiada, reconstruyendo dock completo...');
+
+                // Rebuild the container first (recreates with correct orientation)
                 if (this._dockContainer) {
-                    this._dockContainer.updatePosition();
+                    this._dockContainer.rebuild();
+                }
+
+                // Then rebuild icons
+                if (this._appManager) {
+                    this._appManager.forceRebuild();
                 }
             })
         );
@@ -232,6 +246,17 @@ class TuxDock {
             settings.connect('changed::show-separator', () => {
                 log('Configuración de separador cambiada, reconstruyendo...');
                 this._appManager.forceRebuild();
+            })
+        );
+
+        // Escuchar cambios en duración de animaciones
+        this._settingsChangedIds.push(
+            settings.connect('changed::animation-duration', () => {
+                const duration = this._settings.getAnimationDuration();
+                log(`Animation duration changed to: ${duration}ms`);
+                if (this._appManager && this._appManager._animations) {
+                    this._appManager._animations.setDuration(duration);
+                }
             })
         );
 

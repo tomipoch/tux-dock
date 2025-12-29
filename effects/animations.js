@@ -10,6 +10,11 @@ export class DockAnimations {
     this._bounceAnimations = new Map();
     this._continuousBounces = new Map();
     this._windowTracker = Shell.WindowTracker.get_default();
+    this._duration = 130; // default animation duration
+  }
+
+  setDuration(duration) {
+    this._duration = Math.max(50, Math.min(500, duration));
   }
 
   /* ------------- bounce simple estilo macOS ------------- */
@@ -21,11 +26,11 @@ export class DockAnimations {
 
     let current = 0;
     const baseHeight = 28;
-    const duration = 130;
+    const duration = this._duration;
 
     const original = {
-      sx: actor.scale_x,
-      sy: actor.scale_y,
+      sx: 1.0,  // Siempre restaurar a 1.0, no usar el actual
+      sy: 1.0,
       tx: actor.translation_x,
       ty: actor.translation_y,
     };
@@ -77,13 +82,13 @@ export class DockAnimations {
     if (app.get_n_windows() > 0) return;
 
     const original = {
-      sx: actor.scale_x,
-      sy: actor.scale_y,
+      sx: 1.0,  // Siempre restaurar a 1.0
+      sy: 1.0,
       tx: actor.translation_x,
       ty: actor.translation_y,
     };
 
-    const duration = 160;
+    const duration = this._duration;
     const baseHeight = 30;
     let active = true;
 
@@ -172,6 +177,30 @@ export class DockAnimations {
       scale_x: 1,
       scale_y: 1,
       duration: 220,
+      mode: Clutter.AnimationMode.EASE_OUT_BACK,
+    });
+  }
+
+  /**
+   * Enhanced entry animation for new non-pinned app icons
+   */
+  iconEnterNew(actor) {
+    if (!actor) return;
+
+    const duration = this._duration || 200;
+
+    // Initial state: invisible and small
+    actor.opacity = 0;
+    actor.scale_x = 0.5;
+    actor.scale_y = 0.5;
+    actor.set_pivot_point(0.5, 0.5);
+
+    // Simple fade + scale in animation
+    actor.ease({
+      opacity: 255,
+      scale_x: 1.0,
+      scale_y: 1.0,
+      duration: duration * 1.5,
       mode: Clutter.AnimationMode.EASE_OUT_BACK,
     });
   }

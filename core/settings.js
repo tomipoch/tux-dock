@@ -16,8 +16,13 @@ export class DockSettings {
             } else {
                 // Intentar cargar esquema manualmente desde el directorio local
                 const schemaId = 'org.gnome.shell.extensions.tux-dock';
+
+                // Navigate from core/ up to extension root, then to schemas/
+                const currentDir = import.meta.url.replace('file://', '').replace('/core/settings.js', '');
+                const schemaDir = GLib.build_filenamev([currentDir, 'schemas']);
+
                 const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
-                    GLib.build_filenamev([import.meta.url.replace('file://', '').replace('/settings.js', ''), 'schemas']),
+                    schemaDir,
                     Gio.SettingsSchemaSource.get_default(),
                     false
                 );
@@ -66,6 +71,32 @@ export class DockSettings {
     getIconSize() {
         if (this._useFallback) return this._fallbackSettings.iconSize;
         return this._settings.get_int('icon-size');
+    }
+
+    /**
+     * Get effective icon size, considering screen constraints for vertical dock
+     * @param {number} numApps - Number of apps/icons to display
+     * @param {number} screenHeight - Available screen height (workarea)
+     */
+    getEffectiveIconSize(numApps = 10, screenHeight = 800) {
+        const baseSize = this.getIconSize();
+        const position = this.getPosition();
+
+        // For horizontal dock (BOTTOM), use full size
+        if (position === 'BOTTOM' || position === 'TOP') {
+            return baseSize;
+        }
+
+        // For vertical dock (LEFT/RIGHT), calculate max size to fit
+        const padding = 20; // Top/bottom padding
+        const spacing = 4; // Space between icons
+        const marginForControls = 100; // Space for launcher + trash + separators
+
+        const availableHeight = screenHeight - padding - marginForControls;
+        const maxIconSize = Math.floor((availableHeight - (numApps * spacing)) / Math.max(numApps, 1));
+
+        // Return the smaller of base size or calculated max
+        return Math.min(baseSize, Math.max(32, maxIconSize));
     }
 
     setIconSize(size) {
@@ -252,6 +283,19 @@ export class DockSettings {
             return;
         }
         this._settings.set_boolean('enable-bounce', enabled);
+    }
+
+    getIconBackground() {
+        if (this._useFallback) return this._fallbackSettings.iconBackground !== false;
+        return this._settings.get_boolean('icon-background');
+    }
+
+    setIconBackground(enabled) {
+        if (this._useFallback) {
+            this._fallbackSettings.iconBackground = enabled;
+            return;
+        }
+        this._settings.set_boolean('icon-background', enabled);
     }
 
     getClickAction() {

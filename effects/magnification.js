@@ -32,10 +32,13 @@ export class MagnificationEffect {
 
         this._maxScale = this._settings.getMagnificationScale();
 
-        // Use motion-event and PROPAGATE to not block events to child actors
-        this._motionEventId = this._container.connect('motion-event', (actor, event) => {
-            this._onMotion(event);
-            return Clutter.EVENT_PROPAGATE;
+        // Use captured-event to get motion BEFORE reactive children intercept it
+        // Return PROPAGATE to still allow children (buttons) to receive events
+        this._motionEventId = this._container.connect('captured-event', (actor, event) => {
+            if (event.type() === Clutter.EventType.MOTION) {
+                this._onMotion(event);
+            }
+            return Clutter.EVENT_PROPAGATE; // Always propagate to not block child events
         });
 
         this._leaveEventId = this._container.connect('leave-event', () => {
@@ -43,7 +46,7 @@ export class MagnificationEffect {
             return Clutter.EVENT_PROPAGATE;
         });
 
-        // Also track when mouse enters to ensure we capture motion from the start
+        // Track enter to ensure we start capturing motion immediately
         this._enterEventId = this._container.connect('enter-event', () => {
             return Clutter.EVENT_PROPAGATE;
         });
