@@ -1,10 +1,6 @@
 import Clutter from 'gi://Clutter';
-
-const FPS_DT = 1 / 60;
-
-function lerp(a, b, t) {
-    return a + (b - a) * t;
-}
+import { lerp } from '../core/utils.js';
+import { Magnification, Spacing } from '../core/config.js';
 
 export class MagnificationEffect {
     constructor(container, settings) {
@@ -36,10 +32,10 @@ export class MagnificationEffect {
 
         this._maxScale = this._settings.getMagnificationScale();
 
-        this._motionEventId = this._container.connect('captured-event', (actor, event) => {
-            if (event.type() !== Clutter.EventType.MOTION) return Clutter.EVENT_PROPAGATE;
+        // Use motion-event and PROPAGATE to not block events to child actors
+        this._motionEventId = this._container.connect('motion-event', (actor, event) => {
             this._onMotion(event);
-            return Clutter.EVENT_STOP;
+            return Clutter.EVENT_PROPAGATE;
         });
 
         this._leaveEventId = this._container.connect('leave-event', () => {
@@ -47,7 +43,10 @@ export class MagnificationEffect {
             return Clutter.EVENT_PROPAGATE;
         });
 
-
+        // Also track when mouse enters to ensure we capture motion from the start
+        this._enterEventId = this._container.connect('enter-event', () => {
+            return Clutter.EVENT_PROPAGATE;
+        });
     }
 
     registerIcon(iconActor) {

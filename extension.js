@@ -1,11 +1,12 @@
+import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
-import { DockContainer } from './dockContainer.js';
-import { AppManager } from './appManager.js';
-import { DockSettings } from './settings.js';
-import { AutohideManager } from './autohide.js';
-import { MinimizeToIcon } from './minimizeToIcon.js';
-import { log, logError } from './utils.js';
+import { DockContainer } from './dock/container.js';
+import { AppManager } from './dock/manager.js';
+import { DockSettings } from './core/settings.js';
+import { AutohideManager } from './dock/autohide.js';
+import { MinimizeToIcon } from './services/minimize.js';
+import { log, logError } from './core/utils.js';
 
 /**
  * Clase principal de la extensión TuxDock
@@ -68,11 +69,12 @@ class TuxDock {
             this._connectSettings();
 
             // Actualizar posición inicial después de un delay para asegurar que todo está renderizado
-            setTimeout(() => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
                 if (this._dockContainer) {
                     this._dockContainer.updatePosition();
                 }
-            }, 500);
+                return GLib.SOURCE_REMOVE;
+            });
 
             console.log('[TuxDock] === EXTENSIÓN HABILITADA ===');
             log('TuxDock habilitado correctamente');
@@ -155,10 +157,13 @@ class TuxDock {
             })
         );
 
-        // Escuchar cambios en posición
+        // Escuchar cambios en posición - requiere reconstruir dock
         this._settingsChangedIds.push(
             settings.connect('changed::position', () => {
-                log('Posición cambiada, actualizando...');
+                log('Posición cambiada, reconstruyendo dock...');
+                if (this._appManager) {
+                    this._appManager.forceRebuild();
+                }
                 if (this._dockContainer) {
                     this._dockContainer.updatePosition();
                 }

@@ -4,10 +4,11 @@ import GLib from "gi://GLib";
 
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
-import { AppContextMenu } from "./contextMenu.js";
-import { WindowPreview } from "./windowPreview.js";
-import { DockSettings } from "./settings.js";
-import { DockAnimations } from "./animations.js";
+import { AppContextMenu } from "../ui/contextMenu.js";
+import { WindowPreview } from "../ui/windowPreview.js";
+import { DockSettings } from "../core/settings.js";
+import { DockAnimations } from "../effects/animations.js";
+import { IconSize, CssClass, Tooltip, Preview } from "../core/config.js";
 
 /**
  * Icono de aplicación del dock
@@ -124,8 +125,8 @@ export class AppIcon {
     const windows = this.app.get_windows();
     const isRunning = windows.length > 0;
 
-    if (isRunning && !this._wasRunning && this._settings.getEnableBounce())
-      this._animations.bounceIcon(this._container, 2, 0.4);
+    // When app transitions from not running to running, stop any continuous bounce
+    // (The bounce naturally stops when windows.length > 0 in the bounceContinuous checker)
 
     this._wasRunning = isRunning;
 
@@ -194,6 +195,10 @@ export class AppIcon {
     const windows = this.app.get_windows();
 
     if (windows.length === 0) {
+      // Start continuous bounce if enabled (macOS style)
+      if (this._settings.getEnableBounce()) {
+        this._animations.bounceContinuous(this._container, this.app);
+      }
       this.app.open_new_window(-1);
       return;
     }

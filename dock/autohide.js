@@ -1,6 +1,8 @@
 import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
+import Shell from "gi://Shell";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { Autohide as AutohideConfig } from "../core/config.js";
 
 /**
  * Maneja el comportamiento de ocultamiento automático del dock
@@ -17,19 +19,13 @@ export class AutohideManager {
     this._showTimeoutId = null;
     this._motionEventId = null;
 
-    // Configuración
-    this._hideDelay = 300; // ms antes de ocultar
-    this._showDelay = 100; // ms antes de mostrar
-    this._edgeDistance = 5; // píxeles desde el borde para mostrar
+    // Configuración desde config.js
+    this._hideDelay = AutohideConfig.DELAY_HIDE;
+    this._showDelay = AutohideConfig.DELAY_SHOW;
+    this._edgeDistance = AutohideConfig.EDGE_DISTANCE;
 
-    // Intellihide
-    this._windowTracker = global.window_manager.get_window_tracker ? global.window_manager.get_window_tracker() : null;
-    if (!this._windowTracker) {
-      // Fallback for newer GS versions if needed
-      const Shell = imports.gi.Shell;
-      this._windowTracker = Shell.WindowTracker.get_default();
-    }
-
+    // Window tracker usando import moderno
+    this._windowTracker = Shell.WindowTracker.get_default();
     this._windowSignals = [];
   }
 

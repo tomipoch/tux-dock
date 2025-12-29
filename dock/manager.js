@@ -1,12 +1,14 @@
 import Shell from 'gi://Shell';
 import St from 'gi://St';
+import GLib from 'gi://GLib';
 import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
-import { AppIcon } from './appIcon.js';
-import { DockSettings } from './settings.js';
-import { AppLauncherIcon, TrashIcon } from './specialIcons.js';
-import { DockAnimations, NotificationBouncer } from './animations.js';
-import { StackIcon } from './stackIcon.js';
-import { DragDropHandler } from './dragAndDrop.js';
+import { AppIcon } from '../icons/appIcon.js';
+import { DockSettings } from '../core/settings.js';
+import { AppLauncherIcon } from '../icons/launcherIcon.js';
+import { TrashIcon } from '../icons/trashIcon.js';
+import { DockAnimations, NotificationBouncer } from '../effects/animations.js';
+import { StackIcon } from '../icons/stackIcon.js';
+import { DragDropHandler } from '../services/dragDrop.js';
 
 /**
  * Gestiona las aplicaciones mostradas en el dock
@@ -73,10 +75,11 @@ export class AppManager {
             return;
         }
 
-        this._updateTimeout = setTimeout(() => {
+        this._updateTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
             this.refresh();
             this._updateTimeout = null;
-        }, 100);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     refresh() {
@@ -200,7 +203,7 @@ export class AppManager {
 
     _addAppIcon(app) {
         const iconSize = this._settings.getIconSize();
-        const appIcon = new AppIcon(app, this._windowTracker, iconSize);
+        const appIcon = new AppIcon(app, this._windowTracker, iconSize, this._settings);
         const iconActor = appIcon.build();
 
         this._dockContainer.addIcon(iconActor);
@@ -293,7 +296,7 @@ export class AppManager {
 
         // Limpiar timeout
         if (this._updateTimeout) {
-            clearTimeout(this._updateTimeout);
+            GLib.source_remove(this._updateTimeout);
             this._updateTimeout = null;
         }
 

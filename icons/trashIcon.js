@@ -1,117 +1,27 @@
 import St from 'gi://St';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
-import { logError } from './utils.js';
-
-/**
- * Icono especial para el lanzador de aplicaciones (App Grid)
- */
-export class AppLauncherIcon {
-    constructor(iconSize = 48) {
-        this._button = null;
-        this._iconSize = iconSize;
-        this._signalIds = []; // Track signals for cleanup
-    }
-
-    build() {
-        this._button = new St.Button({
-            style_class: 'tux-dock-app-button tux-dock-special',
-            reactive: true,
-            can_focus: true,
-            track_hover: true,
-            x_expand: false,
-            y_expand: false,
-        });
-
-        this._applyButtonStyle(false);
-
-        // Crear icono de grid/lanzador
-        this._icon = new St.Icon({
-            icon_name: 'view-app-grid-symbolic',
-            icon_size: this._iconSize,
-            style_class: 'app-launcher-icon',
-        });
-
-        this._button.set_child(this._icon);
-
-        // Conectar eventos
-        this._signalIds.push(
-            this._button.connect('clicked', () => {
-                // Abrir el cajón de aplicaciones (App Grid)
-                if (Main.overview.visible) {
-                    if (Main.overview.dash.showAppsButton.checked) {
-                        Main.overview.hide();
-                    } else {
-                        Main.overview.showApps();
-                    }
-                } else {
-                    Main.overview.showApps();
-                }
-            })
-        );
-
-        // Hover effect
-        this._signalIds.push(
-            this._button.connect('notify::hover', (btn) => {
-                this._applyButtonStyle(btn.hover);
-            })
-        );
-
-        return this._button;
-    }
-
-    _applyButtonStyle(isHovered) {
-        const bgColor = isHovered ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
-        this._button.set_style(`
-            background-color: ${bgColor};
-            border-radius: 12px;
-            padding: 8px;
-            margin: 4px;
-            transition-duration: 200ms;
-        `);
-    }
-
-    getActor() {
-        return this._button;
-    }
-
-    destroy() {
-        // Disconnect all signals
-        this._signalIds.forEach(id => {
-            if (this._button) {
-                try {
-                    this._button.disconnect(id);
-                } catch (e) {
-                    // Signal already disconnected
-                }
-            }
-        });
-        this._signalIds = [];
-
-        if (this._button) {
-            this._button.destroy();
-            this._button = null;
-        }
-    }
-}
+import { logError } from '../core/utils.js';
+import { IconSize, BorderRadius, Colors, CssClass, Trash } from '../core/config.js';
 
 /**
  * Icono especial para la papelera
  */
 export class TrashIcon {
-    constructor(iconSize = 48) {
+    constructor(iconSize = IconSize.DEFAULT) {
         this._button = null;
         this._iconSize = iconSize;
+        this._icon = null;
         this._trashMonitor = null;
-        this._trashPollId = null; // Polling fallback ID
-        this._signalIds = []; // Track signals for cleanup
+        this._trashPollId = null;
+        this._signalIds = [];
     }
 
     build() {
         this._button = new St.Button({
-            style_class: 'tux-dock-app-button tux-dock-special',
+            style_class: `${CssClass.APP_BUTTON} ${CssClass.SPECIAL}`,
             reactive: true,
             can_focus: true,
             track_hover: true,
@@ -172,7 +82,7 @@ export class TrashIcon {
             handleDragOver: (source, actor, x, y, time) => {
                 if (source._fileUri) {
                     // Resaltar la papelera cuando se arrastra un archivo sobre ella
-                    this._button.add_style_pseudo_class('drop-target');
+                    this._button.add_style_pseudo_class(CssClass.DROP_TARGET);
                     this._button.set_style(this._button.get_style() + `
                         background-color: rgba(231, 76, 60, 0.3);
                         transform: scale(1.15);
@@ -185,13 +95,8 @@ export class TrashIcon {
 
         // Remover el estilo cuando el drag sale
         this._button.connect('leave-event', () => {
-            this._button.remove_style_pseudo_class('drop-target');
-            this._button.set_style(`
-                padding: 6px;
-                margin: 0 2px;
-                border-radius: 12px;
-                transition-duration: 200ms;
-            `);
+            this._button.remove_style_pseudo_class(CssClass.DROP_TARGET);
+            this._applyButtonStyle(false);
         });
     }
 
@@ -230,7 +135,6 @@ export class TrashIcon {
         }
     }
 
-
     _setupTrashMonitor() {
         // Monitorear cambios en la papelera
         const trashFile = Gio.File.new_for_uri('trash:///');
@@ -242,10 +146,10 @@ export class TrashIcon {
         } catch (e) {
             logError('Error al monitorear papelera', e);
 
-            // Fallback: polling manual cada 5 segundos
-            this._trashPollId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+            // Fallback: polling manual cada N segundos
+            this._trashPollId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, Trash.POLL_INTERVAL, () => {
                 this._updateTrashIcon();
-                return GLib.SOURCE_CONTINUE; // Continuar polling
+                return GLib.SOURCE_CONTINUE;
             });
         }
     }
@@ -274,10 +178,10 @@ export class TrashIcon {
     }
 
     _applyButtonStyle(isHovered) {
-        const bgColor = isHovered ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+        const bgColor = isHovered ? Colors.BG_ICON_HOVER : Colors.BG_ICON_NORMAL;
         this._button.set_style(`
             background-color: ${bgColor};
-            border-radius: 12px;
+            border-radius: ${BorderRadius.ICON}px;
             padding: 8px;
             margin: 4px;
             transition-duration: 200ms;

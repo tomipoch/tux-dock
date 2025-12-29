@@ -5,7 +5,8 @@ import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import * as AppFavorites from "resource:///org/gnome/shell/ui/appFavorites.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import St from "gi://St";
-import { log, logError } from "./utils.js";
+import { log, logError } from "../core/utils.js";
+import { DragDrop } from "../core/config.js";
 
 /**
  * Maneja el arrastrar y soltar de iconos en el dock estilo macOS

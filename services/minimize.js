@@ -3,16 +3,9 @@ import Shell from "gi://Shell";
 import GObject from "gi://GObject";
 import GLib from "gi://GLib";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { DockSettings } from "./settings.js";
-
-/* ---------------- Dock directions ---------------- */
-
-const DockDirection = {
-  BOTTOM: 0,
-  TOP: 1,
-  LEFT: 2,
-  RIGHT: 3,
-};
+import { DockSettings } from "../core/settings.js";
+import { DockDirection, MagicLamp, AnimationTime } from "../core/config.js";
+import { easeInOutCubic } from "../core/utils.js";
 
 /* ---------------- Magic Lamp Effect ---------------- */
 

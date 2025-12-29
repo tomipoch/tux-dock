@@ -2,7 +2,7 @@ import St from "gi://St";
 import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { MagnificationEffect } from "./magnification.js";
+import { MagnificationEffect } from "../effects/magnification.js";
 
 /**
  * Contenedor principal del dock
